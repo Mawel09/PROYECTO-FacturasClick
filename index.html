@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thalassa Facturas — Gestor Inteligente de Facturas</title>
+    <meta name="description" content="Escanea tus tickets de compra con IA, genera listas de compra mensuales y analiza tu consumo con Thalassa Facturas.">
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- ===== LOCK SCREEN ===== -->
+    <div class="lock-screen" id="lock-screen">
+        <div class="lock-card">
+            <div class="lock-logo">
+                <div class="lock-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </div>
+                <h1>Thalassa<span>Facturas</span></h1>
+                <p id="lock-subtitle">Introduce tu PIN para acceder</p>
+            </div>
+
+            <!-- PIN Setup (first time) -->
+            <form id="lock-setup-form" style="display:none;" autocomplete="off">
+                <p class="lock-info">Crea un PIN de acceso para proteger tu cuenta. Lo necesitarás cada vez que abras la app.</p>
+                <div class="form-group">
+                    <label for="setup-pin">Nuevo PIN (mínimo 4 caracteres)</label>
+                    <input type="password" id="setup-pin" placeholder="••••••" minlength="4" required autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="setup-pin-confirm">Confirmar PIN</label>
+                    <input type="password" id="setup-pin-confirm" placeholder="••••••" minlength="4" required autocomplete="new-password">
+                </div>
+                <p class="lock-error" id="setup-error"></p>
+                <button type="submit" class="btn btn-primary" style="width:100%;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Crear PIN y Acceder
+                </button>
+            </form>
+
+            <!-- PIN Login (returning user) -->
+            <form id="lock-login-form" style="display:none;" autocomplete="off">
+                <div class="form-group">
+                    <label for="login-pin">PIN de Acceso</label>
+                    <input type="password" id="login-pin" placeholder="••••••" minlength="4" required autocomplete="current-password">
+                </div>
+                <p class="lock-error" id="login-error"></p>
+                <button type="submit" class="btn btn-primary" style="width:100%;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+                    Acceder
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Mobile Burger -->
+    <button class="mobile-burger" id="mobile-burger" aria-label="Abrir menú">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    </button>
+    <div class="mobile-overlay" id="mobile-overlay"></div>
+
+    <div class="app-layout">
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="#" class="sidebar-logo">
+                    <div class="logo-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    </div>
+                    <div class="logo-text">
+                        <h1>Thalassa<span>Facturas</span></h1>
+                        <p>Gestor Inteligente de Facturas</p>
+                    </div>
+                </a>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-section="dashboard" id="nav-dashboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                    Dashboard
+                </button>
+                <button class="nav-item" data-section="receipts" id="nav-receipts">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    Facturas
+                </button>
+                <button class="nav-item" data-section="shopping" id="nav-shopping">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                    Lista de Compra
+                </button>
+                <button class="nav-item" data-section="products" id="nav-products">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    Productos
+                </button>
+                <button class="nav-item" data-section="reports" id="nav-reports">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                    Informes
+                </button>
+
+                <div class="nav-divider"></div>
+
+                <button class="nav-item" data-section="settings" id="nav-settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Configuración
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="nav-item" id="btn-scan-sidebar" title="Escanear nueva factura">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    Escanear Factura
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <main class="main-content">
+
+            <!-- ===================== SECTION: DASHBOARD ===================== -->
+            <section class="section active" id="section-dashboard">
+                <!-- API Key Banner (shown when no key configured) -->
+                <div class="api-key-banner" id="api-key-banner">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    <div class="api-key-banner-text">
+                        <h3>Configura tu API Key de Gemini</h3>
+                        <p>Para escanear facturas con IA necesitas una clave de Google AI Studio. Ve a Configuración para añadirla.</p>
+                    </div>
+                    <button class="btn btn-sm btn-secondary" id="btn-go-settings">Configurar</button>
+                </div>
+
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>Dashboard</h2>
+                        <p>Resumen de tus gastos y actividad reciente</p>
+                    </div>
+                    <button class="btn btn-primary" id="btn-scan-dashboard">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                        Escanear Factura
+                    </button>
+                </div>
+
+                <!-- Fiscal Calendar Alert -->
+                <div class="fiscal-alert hidden" id="fiscal-alert-banner">
+                    <div class="fiscal-alert-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    </div>
+                    <div class="fiscal-alert-content">
+                        <h4 id="fiscal-alert-title">¡Cierre de trimestre fiscal cerca!</h4>
+                        <p id="fiscal-alert-desc">Sube tus tickets pendientes para maximizar tu IVA deducible antes de que acabe el plazo.</p>
+                    </div>
+                </div>
+
+                <!-- KPIs -->
+                <div class="kpis-grid" id="dashboard-kpis">
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Gasto este Mes</span>
+                            <h3 class="kpi-value" id="kpi-monthly-spend">0,00 €</h3>
+                        </div>
+                        <div class="kpi-icon-wrapper blue">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Facturas del Mes</span>
+                            <h3 class="kpi-value" id="kpi-monthly-count">0</h3>
+                        </div>
+                        <div class="kpi-icon-wrapper green">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Media por Factura</span>
+                            <h3 class="kpi-value" id="kpi-avg-receipt">0,00 €</h3>
+                        </div>
+                        <div class="kpi-icon-wrapper gold">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Comercio Top</span>
+                            <h3 class="kpi-value" id="kpi-top-store">—</h3>
+                        </div>
+                        <div class="kpi-icon-wrapper coral">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fiscal Summary (IVA Traffic Light) -->
+                <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin-top:24px;margin-bottom:16px;">Semáforo del IVA (Trimestre Actual)</h3>
+                <div class="fiscal-summary-card">
+                    <div class="fiscal-summary-info">
+                        <div class="fiscal-stat">
+                            <span class="fiscal-label">Gastos del Trimestre</span>
+                            <span class="fiscal-value" id="fiscal-quarter-spend">0,00 €</span>
+                        </div>
+                        <div class="fiscal-stat highlight">
+                            <span class="fiscal-label">IVA Estimado a Desgravar (~21%)</span>
+                            <span class="fiscal-value" id="fiscal-quarter-iva">0,00 €</span>
+                        </div>
+                    </div>
+                    <div class="fiscal-summary-note">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        Esta es una estimación simple basada en tus tickets escaneados. Úsala como referencia orientativa.
+                    </div>
+                </div>
+
+                <!-- Recent receipts -->
+                <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin-top:24px;margin-bottom:16px;">Últimas Facturas</h3>
+                <div class="receipts-grid" id="dashboard-recent-receipts">
+                    <!-- Rendered by JS -->
+                </div>
+            </section>
+
+            <!-- ===================== SECTION: RECEIPTS ===================== -->
+            <section class="section" id="section-receipts">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>Facturas</h2>
+                        <p>Historial completo de tus tickets de compra</p>
+                    </div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button class="btn btn-secondary" id="btn-export-data">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            Exportar
+                        </button>
+                        <button class="btn btn-primary" id="btn-scan-receipts">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            Escanear Factura
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="filter-bar" id="receipts-filter-bar">
+                    <div class="search-bar">
+                        <input type="text" id="search-receipts" placeholder="Buscar por producto o comercio...">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </div>
+                    <select id="filter-store">
+                        <option value="">Todos los comercios</option>
+                    </select>
+                    <input type="month" id="filter-month">
+                </div>
+
+                <!-- Receipt list -->
+                <div class="receipts-grid" id="receipts-list">
+                    <!-- Rendered by JS -->
+                </div>
+            </section>
+
+            <!-- ===================== SECTION: SHOPPING LIST ===================== -->
+            <section class="section" id="section-shopping">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>Lista de Compra Mensual</h2>
+                        <p>Productos que has comprado este mes agregados</p>
+                    </div>
+                </div>
+
+                <div class="filter-bar">
+                    <input type="month" id="shopping-month">
+                </div>
+
+                <div class="shopping-list-grid" id="shopping-list">
+                    <!-- Rendered by JS -->
+                </div>
+            </section>
+
+            <!-- ===================== SECTION: PRODUCTS ===================== -->
+            <section class="section" id="section-products">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>Productos y Categorías</h2>
+                        <p>Clasifica y analiza tus compras por sección de la empresa</p>
+                    </div>
+                </div>
+
+                <div class="filter-bar">
+                    <input type="month" id="products-month">
+                </div>
+
+                <!-- Category Spend Summary -->
+                <div class="category-summary-grid" id="products-category-summary">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="table-container">
+                    <table class="product-detail-table" id="products-categorization-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th class="text-center">Cant. Total</th>
+                                <th class="text-right">Gasto Mes</th>
+                                <th>Categoría (Sección)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="products-categorization-body">
+                            <!-- Rendered by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ===================== SECTION: REPORTS ===================== -->
+            <section class="section" id="section-reports">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>Informes</h2>
+                        <p>Análisis detallado de tu consumo</p>
+                    </div>
+                </div>
+
+                <div class="filter-bar">
+                    <input type="month" id="reports-month">
+                </div>
+
+                <!-- Summary cards -->
+                <div class="summary-cards" id="reports-summary">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <!-- Charts -->
+                <div class="charts-grid">
+                    <div class="chart-container" id="chart-by-store">
+                        <div class="chart-title">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                            Gasto por Comercio
+                        </div>
+                        <div class="bar-chart" id="bars-by-store"></div>
+                    </div>
+                    <div class="chart-container" id="chart-top-products">
+                        <div class="chart-title">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                            Top Productos por Gasto
+                        </div>
+                        <div class="bar-chart" id="bars-top-products"></div>
+                    </div>
+                </div>
+
+                <!-- Detailed Product Consumption Table -->
+                <div class="chart-container" id="chart-product-detail">
+                    <div class="chart-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                        Detalle de Consumo por Producto
+                    </div>
+                    <p class="chart-subtitle">Cantidad total adquirida, gasto acumulado y precio medio por producto</p>
+                    <div id="product-detail-table"><!-- Rendered by JS --></div>
+                </div>
+
+                <div class="chart-container" id="chart-frequency">
+                    <div class="chart-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+                        Productos Más Frecuentes
+                    </div>
+                    <div class="bar-chart" id="bars-frequency"></div>
+                </div>
+
+                <!-- Purchase Forecast -->
+                <div class="chart-container forecast-container" id="chart-forecast">
+                    <div class="chart-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        Previsión de Compra — Próximo Mes
+                    </div>
+                    <p class="chart-subtitle">Productos que deberías reponer según tu historial de compra</p>
+                    <div id="forecast-list"><!-- Rendered by JS --></div>
+                </div>
+            </section>
+
+            <!-- ===================== SECTION: SETTINGS ===================== -->
+            <section class="section" id="section-settings">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>Configuración</h2>
+                        <p>API Key y gestión de datos</p>
+                    </div>
+                </div>
+
+                <div class="settings-grid">
+                    <div class="settings-group">
+                        <h3>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                            API Key de Google Gemini
+                        </h3>
+                        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+                            Obtén tu clave gratuita en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--sky-accent);text-decoration:underline;">Google AI Studio</a>. Se almacena solo en tu navegador.
+                        </p>
+                        <div class="api-key-input-group">
+                            <input type="password" id="settings-api-key" placeholder="AIzaSy...">
+                            <button class="btn btn-primary btn-sm" id="btn-save-api-key">Guardar</button>
+                        </div>
+                        <div class="api-key-status disconnected" id="api-key-status">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"></circle></svg>
+                            <span>No configurada</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            Gestión de Datos
+                        </h3>
+                        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+                            Exporta un backup de todas tus facturas o importa datos desde un archivo JSON.
+                        </p>
+                        <div class="data-actions">
+                            <button class="btn btn-secondary btn-sm" id="btn-settings-export">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Exportar JSON
+                            </button>
+                            <button class="btn btn-secondary btn-sm" id="btn-settings-import">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                Importar JSON
+                            </button>
+                            <input type="file" id="file-import" accept=".json" style="display:none;">
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Zona de Peligro
+                        </h3>
+                        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+                            Elimina todos los datos almacenados. Esta acción no se puede deshacer.
+                        </p>
+                        <button class="btn btn-danger btn-sm" id="btn-clear-data">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Borrar Todos los Datos
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- ===== MODAL: SCAN RECEIPT ===== -->
+    <div class="modal-overlay" id="modal-scan">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    Escanear Factura
+                </h2>
+                <button class="btn-close-modal" id="btn-close-scan">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+
+            <!-- Upload state -->
+            <div id="scan-upload-state">
+                <div class="upload-zone" id="upload-zone">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    <h3>Sube tu ticket de compra</h3>
+                    <p>Arrastra una imagen aquí o haz clic para seleccionar</p>
+                    <p style="margin-top:8px;font-size:11px;color:var(--text-muted);">JPG, PNG, WEBP • Máx. 10MB</p>
+                    <input type="file" id="receipt-file-input" accept="image/*">
+                    <img class="upload-preview" id="upload-preview" style="display:none;" alt="Vista previa del ticket">
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btn-cancel-scan">Cancelar</button>
+                    <button class="btn btn-primary" id="btn-process-scan" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                        Analizar con IA
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading state -->
+            <div id="scan-loading-state" style="display:none;">
+                <div class="ai-loading">
+                    <div class="ai-loading-spinner"></div>
+                    <p>Gemini está analizando tu ticket<span class="ai-dots"></span></p>
+                    <p style="font-size:12px;color:var(--text-muted);">Extrayendo productos, precios y cantidades...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: REVIEW EXTRACTED DATA ===== -->
+    <div class="modal-overlay" id="modal-review">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                    Revisar Datos Extraídos
+                </h2>
+                <button class="btn-close-modal" id="btn-close-review">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+
+            <!-- Store & Date -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="review-store">Comercio</label>
+                    <input type="text" id="review-store" placeholder="Ej. Mercadona">
+                </div>
+                <div class="form-group">
+                    <label for="review-date">Fecha</label>
+                    <input type="date" id="review-date">
+                </div>
+            </div>
+
+            <!-- Products table -->
+            <div class="products-table-wrapper">
+                <table class="products-table" id="review-products-table">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th class="text-center">Cant.</th>
+                            <th class="text-right">P. Unit.</th>
+                            <th class="text-right">Total</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="review-products-body">
+                        <!-- Rendered by JS -->
+                    </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td colspan="3" class="text-right" style="font-weight:700;">TOTAL</td>
+                            <td class="text-right" id="review-total">0,00 €</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <button class="btn btn-ghost btn-sm" id="btn-add-product-row" style="align-self:flex-start;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                Añadir Producto
+            </button>
+
+            <div class="form-group">
+                <label for="review-notes">Notas (opcional)</label>
+                <textarea id="review-notes" rows="2" placeholder="Notas adicionales sobre esta compra..."></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btn-cancel-review">Cancelar</button>
+                <button class="btn btn-primary" id="btn-save-receipt">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Guardar Factura
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: VIEW RECEIPT DETAIL ===== -->
+    <div class="modal-overlay" id="modal-detail">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2 id="detail-title">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                    Detalle de Factura
+                </h2>
+                <button class="btn-close-modal" id="btn-close-detail">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div id="detail-body">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger btn-sm" id="btn-delete-receipt">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Eliminar
+                </button>
+                <button class="btn btn-secondary" id="btn-close-detail-footer">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- App Script (v6 to break cache) -->
+    <script src="app.js?v=8"></script>
+</body>
+</html>
