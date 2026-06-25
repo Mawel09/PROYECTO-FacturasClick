@@ -27,6 +27,7 @@ const storage = firebase.storage();
 
 // ── STATE ──────────────────────────────────────────────────
 let receipts = [];
+let currentUserUid = null;
 let productCategories = {}; // { "product name": "peluqueria" | "estetica" | "general" }
 let currentEditId = null; // for detail modal delete
 let extractedData = null; // temp data from AI scan
@@ -192,7 +193,7 @@ function sanitizeReceipt(r) {
 async function saveReceiptImage(receiptId, fileOrBase64) {
     if (!fileOrBase64 || !receiptId) return null;
     try {
-        const storageRef = storage.ref(`receipts/${receiptId}`);
+        const storageRef = storage.ref(`users/${currentUserUid}/receipts/${receiptId}`);
         let uploadTask;
         
         if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:image')) {
@@ -212,7 +213,7 @@ async function saveReceiptImage(receiptId, fileOrBase64) {
 // Retrieve a receipt image URL
 async function getReceiptImage(receiptId) {
     try {
-        const storageRef = storage.ref(`receipts/${receiptId}`);
+        const storageRef = storage.ref(`users/${currentUserUid}/receipts/${receiptId}`);
         return await storageRef.getDownloadURL();
     } catch (e) {
         console.warn('Error loading receipt image from Firebase:', e);
@@ -223,7 +224,7 @@ async function getReceiptImage(receiptId) {
 // Remove a receipt image from Firebase Storage
 async function deleteReceiptImage(receiptId) {
     try {
-        const storageRef = storage.ref(`receipts/${receiptId}`);
+        const storageRef = storage.ref(`users/${currentUserUid}/receipts/${receiptId}`);
         await storageRef.delete();
     } catch (e) {
         console.warn('Error deleting receipt image from Firebase:', e);
@@ -232,7 +233,7 @@ async function deleteReceiptImage(receiptId) {
 
 async function loadProductCategories() {
     try {
-        const doc = await db.collection('settings').doc('productCategories').get();
+        const doc = await db.collection('users').doc(currentUserUid).collection('settings').doc('productCategories').get();
         if (doc.exists) {
             productCategories = doc.data() || {};
         } else {
@@ -246,47 +247,41 @@ async function loadProductCategories() {
 
 async function saveProductCategories() {
     try {
-        await db.collection('settings').doc('productCategories').set(productCategories);
+        await db.collection('users').doc(currentUserUid).collection('settings').doc('productCategories').set(productCategories);
     } catch (e) {
         console.error('Error saving product categories to Firebase:', e);
     }
 }
 
-async function migrateLocalDataToFirebase() {
+async function migrateGlobalToPrivate(uid) {
     try {
-        let localData = await localforage.getItem(STORAGE_KEY);
-        if (localData && localData.length > 0) {
-            console.log('Migrating local data to Firebase...');
-            showToast('Sincronizando datos con la nube...', 'info');
+        const globalRef = db.collection('receipts');
+        const snapshot = await globalRef.get();
+        
+        if (!snapshot.empty) {
+            console.log('Migrating global data to private account...');
+            showToast('Sincronizando cuenta...', 'info');
             
             // Migrate receipts
-            for (const r of localData) {
-                if (r.hasImage && !r.imageUrl) {
-                    const imgBase64 = await localforage.getItem(`thalassa_img_${r.id}`);
-                    if (imgBase64) {
-                        const url = await saveReceiptImage(r.id, imgBase64);
-                        if (url) r.imageUrl = url;
-                    }
-                }
-                const cleanR = sanitizeReceipt(r);
-                delete cleanR.imageBase64;
-                await db.collection('receipts').doc(cleanR.id).set(cleanR);
+            for (const doc of snapshot.docs) {
+                const data = doc.data();
+                await db.collection('users').doc(uid).collection('receipts').doc(doc.id).set(data);
+                // After copying, delete from global to avoid re-migrating
+                await globalRef.doc(doc.id).delete();
             }
             
             // Migrate categories
-            const localCats = await localforage.getItem('thalassa_product_categories');
-            if (localCats) {
-                await db.collection('settings').doc('productCategories').set(localCats);
+            const catDoc = await db.collection('settings').doc('productCategories').get();
+            if (catDoc.exists) {
+                await db.collection('users').doc(uid).collection('settings').doc('productCategories').set(catDoc.data());
+                await db.collection('settings').doc('productCategories').delete();
             }
             
-            // Clear local data
-            await localforage.clear();
-            localStorage.removeItem(STORAGE_KEY);
-            console.log('Migration to Firebase complete.');
-            showToast('Sincronización completada', 'success');
+            console.log('Migration to private account complete.');
+            showToast('Cuenta configurada', 'success');
         }
     } catch (e) {
-        console.error('Error during Firebase migration:', e);
+        console.error('Error during global migration:', e);
     }
 }
 
@@ -297,10 +292,10 @@ async function loadReceipts() {
         await loadProductCategories();
         
         // Start migration in background (do not await)
-        migrateLocalDataToFirebase().catch(e => console.error('Migration failed:', e));
+        migrateGlobalToPrivate(currentUserUid).catch(e => console.error('Migration failed:', e));
         
         // Use onSnapshot to get real-time updates from other devices!
-        db.collection('receipts').onSnapshot(snapshot => {
+        db.collection('users').doc(currentUserUid).collection('receipts').onSnapshot(snapshot => {
             receipts = [];
             snapshot.forEach(doc => {
                 receipts.push(sanitizeReceipt(doc.data()));
@@ -712,7 +707,7 @@ async function deleteReceipt(id) {
 
     if (confirm(`¿Eliminar la factura de "${receipt.store || 'Desconocido'}" del ${formatDateStr(receipt.date)}?`)) {
         // Delete from Firebase
-        await db.collection('receipts').doc(id).delete();
+        await db.collection('users').doc(currentUserUid).collection('receipts').doc(id).delete();
         await deleteReceiptImage(id);
         
         closeAllModals();
@@ -1638,7 +1633,7 @@ async function saveReviewedReceipt() {
     }
 
     // Save to Firebase (this will trigger onSnapshot to update UI)
-    await db.collection('receipts').doc(sanitized.id).set(sanitized);
+    await db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized);
 
     closeModal(DOM.modalReview);
     extractedData = null;
@@ -1724,7 +1719,7 @@ function importData(file) {
                     }
                     const sanitized = sanitizeReceipt(r);
                     delete sanitized.imageBase64;
-                    await db.collection('receipts').doc(sanitized.id).set(sanitized);
+                    await db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized);
                 }
                 showToast(`${imported.length} facturas importadas correctamente`, 'success');
             }
@@ -1844,7 +1839,7 @@ function initEventListeners() {
             showToast('Eliminando datos de la nube...', 'info');
             for (const r of receipts) {
                 await deleteReceiptImage(r.id);
-                await db.collection('receipts').doc(r.id).delete();
+                await db.collection('users').doc(currentUserUid).collection('receipts').doc(r.id).delete();
             }
             showToast('Todos los datos han sido eliminados', 'success');
         }
@@ -1890,27 +1885,7 @@ async function init() {
     }
 }
 
-// ── AUTH / PIN SYSTEM ──────────────────────────────────────
-
-async function hashPin(pin) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(pin + '_thalassa_salt_2026');
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function isSessionActive() {
-    return sessionStorage.getItem(SESSION_KEY) === 'true';
-}
-
-function hasPinConfigured() {
-    return !!localStorage.getItem(PIN_HASH_STORAGE);
-}
-
-function activateSession() {
-    sessionStorage.setItem(SESSION_KEY, 'true');
-}
+// ── FIREBASE AUTHENTICATION ──────────────────────────────────────
 
 function unlockApp() {
     const lockScreen = document.getElementById('lock-screen');
@@ -1921,87 +1896,116 @@ function unlockApp() {
     init();
 }
 
-function initAuth() {
+// Escuchar cambios de estado de autenticación
+firebase.auth().onAuthStateChanged(user => {
     const lockScreen = document.getElementById('lock-screen');
-    const setupForm = document.getElementById('lock-setup-form');
-    const loginForm = document.getElementById('lock-login-form');
-    const lockSubtitle = document.getElementById('lock-subtitle');
-
-    // Already authenticated in this session?
-    if (isSessionActive() && hasPinConfigured()) {
-        lockScreen.style.display = 'none';
-        init();
-        return;
-    }
-
-    // First time — show setup form
-    if (!hasPinConfigured()) {
-        lockSubtitle.textContent = 'Crea tu PIN de acceso';
-        setupForm.style.display = 'block';
-        loginForm.style.display = 'none';
-        document.getElementById('setup-pin').focus();
-    } else {
-        // Returning user — show login form
-        lockSubtitle.textContent = 'Introduce tu PIN para acceder';
-        setupForm.style.display = 'none';
-        loginForm.style.display = 'block';
-        document.getElementById('login-pin').focus();
-    }
-
-    // Setup form handler
-    setupForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pin = document.getElementById('setup-pin').value;
-        const confirm = document.getElementById('setup-pin-confirm').value;
-        const errorEl = document.getElementById('setup-error');
-
-        if (pin.length < 4) {
-            errorEl.textContent = 'El PIN debe tener al menos 4 caracteres';
-            return;
-        }
-
-        if (pin !== confirm) {
-            errorEl.textContent = 'Los PINs no coinciden';
-            document.getElementById('setup-pin-confirm').value = '';
-            document.getElementById('setup-pin-confirm').focus();
-            return;
-        }
-
-        errorEl.textContent = '';
-        const hash = await hashPin(pin);
-        localStorage.setItem(PIN_HASH_STORAGE, hash);
-        activateSession();
+    if (user) {
+        // Usuario logueado
+        currentUserUid = user.uid;
         unlockApp();
-        showToast('PIN creado. ¡Bienvenido a ThalassaFacturas!', 'success');
+        document.getElementById('btn-logout').addEventListener('click', () => {
+            firebase.auth().signOut().then(() => {
+                window.location.reload();
+            });
+        });
+    } else {
+        // Usuario no logueado
+        currentUserUid = null;
+        lockScreen.style.display = 'flex';
+        lockScreen.classList.remove('hidden');
+        initAuthUI();
+    }
+});
+
+function initAuthUI() {
+    const tabLogin = document.getElementById('tab-login');
+    const tabRegister = document.getElementById('tab-register');
+    const formLogin = document.getElementById('auth-login-form');
+    const formRegister = document.getElementById('auth-register-form');
+    const errorLogin = document.getElementById('login-error');
+    const errorRegister = document.getElementById('register-error');
+
+    // Cambiar pestañas
+    tabLogin.addEventListener('click', () => {
+        tabLogin.classList.add('active');
+        tabRegister.classList.remove('active');
+        formLogin.style.display = 'block';
+        formRegister.style.display = 'none';
+        errorLogin.textContent = '';
     });
 
-    // Login form handler
-    loginForm.addEventListener('submit', async (e) => {
+    tabRegister.addEventListener('click', () => {
+        tabRegister.classList.add('active');
+        tabLogin.classList.remove('active');
+        formRegister.style.display = 'block';
+        formLogin.style.display = 'none';
+        errorRegister.textContent = '';
+    });
+
+    // Iniciar Sesión
+    formLogin.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const pin = document.getElementById('login-pin').value;
-        const errorEl = document.getElementById('login-error');
+        const email = document.getElementById('login-email').value;
+        const pass = document.getElementById('login-password').value;
+        const btn = document.getElementById('btn-login-submit');
+        
+        try {
+            btn.disabled = true;
+            btn.innerHTML = 'Cargando...';
+            errorLogin.textContent = '';
+            await firebase.auth().signInWithEmailAndPassword(email, pass);
+        } catch (error) {
+            console.error('Error de login:', error);
+            errorLogin.textContent = 'Email o contraseña incorrectos.';
+            btn.disabled = false;
+            btn.innerHTML = 'Iniciar Sesión';
+            shakeCard();
+        }
+    });
 
-        const hash = await hashPin(pin);
-        const storedHash = localStorage.getItem(PIN_HASH_STORAGE);
+    // Registrarse
+    formRegister.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('register-email').value;
+        const pass = document.getElementById('register-password').value;
+        const confirm = document.getElementById('register-password-confirm').value;
+        const btn = document.getElementById('btn-register-submit');
+        
+        if (pass !== confirm) {
+            errorRegister.textContent = 'Las contraseñas no coinciden.';
+            return;
+        }
 
-        if (hash === storedHash) {
-            errorEl.textContent = '';
-            activateSession();
-            unlockApp();
-        } else {
-            errorEl.textContent = 'PIN incorrecto';
-            document.getElementById('login-pin').value = '';
-            document.getElementById('login-pin').focus();
-            // Shake animation
-            const card = document.querySelector('.lock-card');
-            card.style.animation = 'none';
-            card.offsetHeight; // trigger reflow
-            card.style.animation = 'shake 0.4s ease';
+        try {
+            btn.disabled = true;
+            btn.innerHTML = 'Creando cuenta...';
+            errorRegister.textContent = '';
+            await firebase.auth().createUserWithEmailAndPassword(email, pass);
+            // El onAuthStateChanged detectará el nuevo usuario y llamará a init() y a la migración
+        } catch (error) {
+            console.error('Error de registro:', error);
+            if (error.code === 'auth/email-already-in-use') {
+                errorRegister.textContent = 'Este email ya está registrado.';
+            } else if (error.code === 'auth/weak-password') {
+                errorRegister.textContent = 'La contraseña es muy débil.';
+            } else {
+                errorRegister.textContent = 'Error al crear la cuenta.';
+            }
+            btn.disabled = false;
+            btn.innerHTML = 'Registrarse';
+            shakeCard();
         }
     });
 }
 
-// Shake animation for wrong PIN
+function shakeCard() {
+    const card = document.querySelector('.lock-card');
+    card.style.animation = 'none';
+    card.offsetHeight; // trigger reflow
+    card.style.animation = 'shake 0.4s ease';
+}
+
+// Shake animation para errores
 const shakeStyle = document.createElement('style');
 shakeStyle.textContent = `
 @keyframes shake {
@@ -2013,6 +2017,3 @@ shakeStyle.textContent = `
 }
 `;
 document.head.appendChild(shakeStyle);
-
-// Start with auth
-initAuth();

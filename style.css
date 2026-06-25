@@ -380,6 +380,147 @@ body::before {
     line-height: 1;
 }
 
+/* ===== AUTH SCREEN ===== */
+.lock-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, var(--ocean-deep), var(--marine-blue));
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.5s ease;
+    padding: 20px;
+}
+
+.lock-card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 40px;
+    border-radius: 24px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    color: white;
+}
+
+.lock-logo {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.lock-icon {
+    background: rgba(255,255,255,0.1);
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+}
+
+.lock-logo h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.lock-logo h1 span {
+    color: var(--teal-light);
+    font-weight: 300;
+}
+
+.lock-logo p {
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+}
+
+.auth-tabs {
+    display: flex;
+    background: rgba(0,0,0,0.2);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 24px;
+}
+
+.auth-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.6);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.auth-tab.active {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.lock-card .form-group {
+    margin-bottom: 20px;
+}
+
+.lock-card label {
+    display: block;
+    font-size: 13px;
+    color: rgba(255,255,255,0.8);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.lock-card input {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    color: white;
+    font-size: 16px;
+    outline: none;
+    transition: all 0.3s;
+}
+
+.lock-card input:focus {
+    background: rgba(0,0,0,0.3);
+    border-color: var(--teal-light);
+}
+
+.lock-card input::placeholder {
+    color: rgba(255,255,255,0.3);
+}
+
+.lock-error {
+    color: #ff6b6b;
+    font-size: 13px;
+    margin-top: 8px;
+    margin-bottom: 16px;
+    min-height: 18px;
+    text-align: center;
+}
+
+.lock-info {
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 20px;
+    text-align: center;
+    background: rgba(0,0,0,0.1);
+    padding: 12px;
+    border-radius: 12px;
+}
+
 .kpi-icon-wrapper {
     width: 44px;
     height: 44px;
