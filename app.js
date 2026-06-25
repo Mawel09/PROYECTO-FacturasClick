@@ -292,8 +292,10 @@ async function migrateLocalDataToFirebase() {
 
 async function loadReceipts() {
     try {
-        await migrateLocalDataToFirebase();
         await loadProductCategories();
+        
+        // Start migration in background (do not await)
+        migrateLocalDataToFirebase().catch(e => console.error('Migration failed:', e));
         
         // Use onSnapshot to get real-time updates from other devices!
         db.collection('receipts').onSnapshot(snapshot => {
