@@ -586,7 +586,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-    <!-- App Script (v6 to break cache) -->
-    <script src="app.js?v=8"></script>
+    <!-- Firebase SDK (Compat versions for ease of migration) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+    <!-- App Script (v8 to break cache) -->
+    <script src="app.js?v=9"></script>
 </body>
 </html>

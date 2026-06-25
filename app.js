@@ -10,6 +10,21 @@ const PIN_HASH_STORAGE = 'thalassa_pin_hash';
 const SESSION_KEY = 'thalassa_session_active';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
+// ── FIREBASE CONFIGURATION ─────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyAX3earAFu2F2RMDR-4FnE64rvQqcUZbc4",
+  authDomain: "tablerofacturasline.firebaseapp.com",
+  projectId: "tablerofacturasline",
+  storageBucket: "tablerofacturasline.firebasestorage.app",
+  messagingSenderId: "658530188422",
+  appId: "1:658530188422:web:1c5dda3b3390f4aaa42507",
+  measurementId: "G-YZ16RWXWZB"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
+
 // ── STATE ──────────────────────────────────────────────────
 let receipts = [];
 let productCategories = {}; // { "product name": "peluqueria" | "estetica" | "general" }
@@ -173,106 +188,132 @@ function sanitizeReceipt(r) {
     return r;
 }
 
-// Save a receipt image separately to avoid bloating main data store
-async function saveReceiptImage(receiptId, base64Data) {
-    if (!base64Data || !receiptId) return;
+// Save a receipt image to Firebase Storage and return URL
+async function saveReceiptImage(receiptId, fileOrBase64) {
+    if (!fileOrBase64 || !receiptId) return null;
     try {
-        await localforage.setItem(`thalassa_img_${receiptId}`, base64Data);
+        const storageRef = storage.ref(`receipts/${receiptId}`);
+        let uploadTask;
+        
+        if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:image')) {
+            uploadTask = await storageRef.putString(fileOrBase64, 'data_url');
+        } else {
+            uploadTask = await storageRef.put(fileOrBase64);
+        }
+        
+        const downloadURL = await uploadTask.ref.getDownloadURL();
+        return downloadURL;
     } catch (e) {
-        console.error('Error saving receipt image:', e);
-    }
-}
-
-// Retrieve a receipt image
-async function getReceiptImage(receiptId) {
-    try {
-        return await localforage.getItem(`thalassa_img_${receiptId}`);
-    } catch (e) {
-        console.error('Error loading receipt image:', e);
+        console.error('Error saving receipt image to Firebase:', e);
         return null;
     }
 }
 
-// Remove a receipt image from storage
+// Retrieve a receipt image URL
+async function getReceiptImage(receiptId) {
+    try {
+        const storageRef = storage.ref(`receipts/${receiptId}`);
+        return await storageRef.getDownloadURL();
+    } catch (e) {
+        console.warn('Error loading receipt image from Firebase:', e);
+        return null;
+    }
+}
+
+// Remove a receipt image from Firebase Storage
 async function deleteReceiptImage(receiptId) {
     try {
-        await localforage.removeItem(`thalassa_img_${receiptId}`);
+        const storageRef = storage.ref(`receipts/${receiptId}`);
+        await storageRef.delete();
     } catch (e) {
-        console.error('Error deleting receipt image:', e);
+        console.warn('Error deleting receipt image from Firebase:', e);
     }
 }
 
 async function loadProductCategories() {
     try {
-        const data = await localforage.getItem('thalassa_product_categories');
-        productCategories = data || {};
+        const doc = await db.collection('settings').doc('productCategories').get();
+        if (doc.exists) {
+            productCategories = doc.data() || {};
+        } else {
+            productCategories = {};
+        }
     } catch (e) {
-        console.error('Error loading product categories:', e);
+        console.error('Error loading product categories from Firebase:', e);
         productCategories = {};
     }
 }
 
 async function saveProductCategories() {
     try {
-        await localforage.setItem('thalassa_product_categories', productCategories);
+        await db.collection('settings').doc('productCategories').set(productCategories);
     } catch (e) {
-        console.error('Error saving product categories:', e);
+        console.error('Error saving product categories to Firebase:', e);
+    }
+}
+
+async function migrateLocalDataToFirebase() {
+    try {
+        let localData = await localforage.getItem(STORAGE_KEY);
+        if (localData && localData.length > 0) {
+            console.log('Migrating local data to Firebase...');
+            showToast('Sincronizando datos con la nube...', 'info');
+            
+            // Migrate receipts
+            for (const r of localData) {
+                if (r.hasImage && !r.imageUrl) {
+                    const imgBase64 = await localforage.getItem(`thalassa_img_${r.id}`);
+                    if (imgBase64) {
+                        const url = await saveReceiptImage(r.id, imgBase64);
+                        if (url) r.imageUrl = url;
+                    }
+                }
+                const cleanR = sanitizeReceipt(r);
+                delete cleanR.imageBase64;
+                await db.collection('receipts').doc(cleanR.id).set(cleanR);
+            }
+            
+            // Migrate categories
+            const localCats = await localforage.getItem('thalassa_product_categories');
+            if (localCats) {
+                await db.collection('settings').doc('productCategories').set(localCats);
+            }
+            
+            // Clear local data
+            await localforage.clear();
+            localStorage.removeItem(STORAGE_KEY);
+            console.log('Migration to Firebase complete.');
+            showToast('Sincronización completada', 'success');
+        }
+    } catch (e) {
+        console.error('Error during Firebase migration:', e);
     }
 }
 
 async function loadReceipts() {
     try {
+        await migrateLocalDataToFirebase();
         await loadProductCategories();
-        let data = await localforage.getItem(STORAGE_KEY);
-        if (!data) {
-            // Migration check from localStorage
-            const oldData = localStorage.getItem(STORAGE_KEY);
-            if (oldData) {
-                data = JSON.parse(oldData);
-                localStorage.removeItem(STORAGE_KEY);
-                console.log('Migrated data from localStorage');
-            }
-        }
-        receipts = Array.isArray(data) ? data : [];
-
-        // Sanitize all receipts to fix types/formats
-        receipts = receipts.map(sanitizeReceipt).filter(Boolean);
-
-        // Migrate: move any inline imageBase64 to separate storage
-        let migrated = false;
-        for (const r of receipts) {
-            if (r.imageBase64) {
-                await saveReceiptImage(r.id, r.imageBase64);
-                r.hasImage = true;
-                delete r.imageBase64;
-                migrated = true;
-            }
-        }
-        if (migrated) {
-            console.log('Migrated inline images to separate storage');
-        }
-
-        // Save cleaned data (without images)
-        await saveReceipts();
+        
+        // Use onSnapshot to get real-time updates from other devices!
+        db.collection('receipts').onSnapshot(snapshot => {
+            receipts = [];
+            snapshot.forEach(doc => {
+                receipts.push(sanitizeReceipt(doc.data()));
+            });
+            receipts.sort((a, b) => new Date(b.date) - new Date(a.date));
+            renderDashboard();
+            renderReceiptsList();
+        });
 
     } catch (e) {
-        console.error('Error loading receipts from DB:', e);
-        receipts = [];
+        console.error('Error loading receipts from Firebase:', e);
+        showToast('Error de conexión con la base de datos', 'error');
     }
 }
 
 async function saveReceipts() {
-    try {
-        // Strip any remaining imageBase64 from data before saving
-        const dataToSave = receipts.map(r => {
-            const { imageBase64, ...rest } = r;
-            return rest;
-        });
-        await localforage.setItem(STORAGE_KEY, dataToSave);
-    } catch (e) {
-        console.error('DB save error:', e);
-        showToast('⚠️ Error al guardar datos. Revisa el espacio del navegador.', 'error');
-    }
+    // Deprecated. We save individual documents to Firebase now.
 }
 
 function getApiKey() {
@@ -661,14 +702,13 @@ async function deleteReceipt(id) {
     if (!receipt) return;
 
     if (confirm(`¿Eliminar la factura de "${receipt.store || 'Desconocido'}" del ${formatDateStr(receipt.date)}?`)) {
-        receipts = receipts.filter(r => r.id !== id);
-        await saveReceipts();
-        // Clean up separated image storage
+        // Delete from Firebase
+        await db.collection('receipts').doc(id).delete();
         await deleteReceiptImage(id);
+        
         closeAllModals();
-        renderDashboard();
-        renderReceiptsList();
         showToast('Factura eliminada', 'success');
+        // Note: onSnapshot handles the UI update automatically!
     }
 }
 
@@ -1581,15 +1621,15 @@ async function saveReviewedReceipt() {
 
     // Sanitize before saving
     const sanitized = sanitizeReceipt(receipt);
-    receipts.push(sanitized);
-
-    // Save receipt data (without image) — AWAIT to ensure persistence
-    await saveReceipts();
-
-    // Save image separately (non-blocking, but still async)
+    
+    // Save image separately and get URL
     if (selectedImageBase64) {
-        saveReceiptImage(receiptId, selectedImageBase64);
+        const url = await saveReceiptImage(receiptId, selectedImageBase64);
+        if (url) sanitized.imageUrl = url;
     }
+
+    // Save to Firebase (this will trigger onSnapshot to update UI)
+    await db.collection('receipts').doc(sanitized.id).set(sanitized);
 
     closeModal(DOM.modalReview);
     extractedData = null;
@@ -1597,10 +1637,6 @@ async function saveReviewedReceipt() {
     selectedFile = null;
 
     showToast(`Factura de "${receipt.store}" guardada con ${receipt.products.length} productos`, 'success');
-
-    // Refresh current view
-    renderDashboard();
-    renderReceiptsList();
 }
 
 // ── EXPORT / IMPORT ────────────────────────────────────────
@@ -1626,16 +1662,20 @@ async function exportData() {
         // 2. Add full JSON data for backup
         zip.file('datos_completos.json', JSON.stringify(receipts, null, 2));
 
-        // 3. Add images from separate storage
+        // 3. Add images from Firebase
         const folder = zip.folder('facturas');
         for (const r of receipts) {
-            if (r.hasImage || r.imageBase64) {
-                // Try separate storage first, fallback to inline (legacy)
-                let imgData = await getReceiptImage(r.id);
-                if (!imgData && r.imageBase64) imgData = r.imageBase64;
-                if (imgData) {
-                    const safeStore = (r.store || 'desconocido').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                    folder.file(`${r.date}_${safeStore}_${r.id}.jpg`, imgData, {base64: true});
+            if (r.hasImage || r.imageUrl) {
+                let imgUrl = r.imageUrl || await getReceiptImage(r.id);
+                if (imgUrl) {
+                    try {
+                        const res = await fetch(imgUrl);
+                        const blob = await res.blob();
+                        const safeStore = (r.store || 'desconocido').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                        folder.file(`${r.date}_${safeStore}_${r.id}.jpg`, blob);
+                    } catch(err) {
+                        console.warn('Could not fetch image for zip', r.id, err);
+                    }
                 }
             }
         }
@@ -1665,23 +1705,19 @@ function importData(file) {
             const imported = JSON.parse(e.target.result);
             if (!Array.isArray(imported)) throw new Error('Formato inválido');
 
-            if (confirm(`¿Importar ${imported.length} facturas? Esto se añadirá a tus datos actuales.`)) {
-                // Merge (add new IDs, sanitize, migrate images)
+            if (confirm(`¿Importar ${imported.length} facturas? Esto se añadirá a tus datos actuales en la Nube.`)) {
+                showToast('Importando a la nube, por favor espera...', 'info');
                 for (const r of imported) {
                     if (!r.id) r.id = generateId();
-                    // Migrate inline images to separate storage
-                    if (r.imageBase64) {
-                        await saveReceiptImage(r.id, r.imageBase64);
-                        r.hasImage = true;
-                        delete r.imageBase64;
+                    if (r.imageBase64 && !r.imageUrl) {
+                        const url = await saveReceiptImage(r.id, r.imageBase64);
+                        if (url) r.imageUrl = url;
                     }
                     const sanitized = sanitizeReceipt(r);
-                    if (sanitized) receipts.push(sanitized);
+                    delete sanitized.imageBase64;
+                    await db.collection('receipts').doc(sanitized.id).set(sanitized);
                 }
-                await saveReceipts();
-                renderDashboard();
-                renderReceiptsList();
-                showToast(`${imported.length} facturas importadas`, 'success');
+                showToast(`${imported.length} facturas importadas correctamente`, 'success');
             }
         } catch (err) {
             showToast('Error al leer el archivo JSON', 'error');
@@ -1795,16 +1831,13 @@ function initEventListeners() {
 
     // Settings - Clear data
     DOM.btnClearData.addEventListener('click', async () => {
-        if (confirm('⚠️ ¿Eliminar TODOS los datos? Esta acción no se puede deshacer.')) {
-            // Delete all separated images first
+        if (confirm('⚠️ ¿Eliminar TODOS los datos de la nube? Esta acción no se puede deshacer.')) {
+            showToast('Eliminando datos de la nube...', 'info');
             for (const r of receipts) {
                 await deleteReceiptImage(r.id);
+                await db.collection('receipts').doc(r.id).delete();
             }
-            receipts = [];
-            await saveReceipts();
-            renderDashboard();
-            renderReceiptsList();
-            showToast('Todos los datos han sido eliminados', 'info');
+            showToast('Todos los datos han sido eliminados', 'success');
         }
     });
 
