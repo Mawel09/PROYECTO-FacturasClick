@@ -290,6 +290,8 @@ async function migrateLocalDataToFirebase() {
     }
 }
 
+let renderTimeout;
+
 async function loadReceipts() {
     try {
         await loadProductCategories();
@@ -304,8 +306,13 @@ async function loadReceipts() {
                 receipts.push(sanitizeReceipt(doc.data()));
             });
             receipts.sort((a, b) => new Date(b.date) - new Date(a.date));
-            renderDashboard();
-            renderReceiptsList();
+            
+            // Debounce rendering to avoid UI freezing during mass imports/migrations
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(() => {
+                renderDashboard();
+                renderReceiptsList();
+            }, 150);
         });
 
     } catch (e) {
