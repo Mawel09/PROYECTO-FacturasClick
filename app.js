@@ -1859,25 +1859,26 @@ function initEventListeners() {
 // ── INIT ───────────────────────────────────────────────────
 
 async function init() {
-    await loadReceipts();
-
-    // Check Fiscal Calendar
-    if (typeof checkFiscalCalendar === 'function') {
-        checkFiscalCalendar();
-    }
-
-    // Set default month values
+    // Set default month values FIRST
     const currentMonth = getCurrentMonth();
     DOM.filterMonth.value = '';
     DOM.shoppingMonth.value = currentMonth;
     DOM.productsMonth.value = currentMonth;
     DOM.reportsMonth.value = currentMonth;
 
+    // Attach event listeners before loading data so UI doesn't freeze
     initEventListeners();
-    renderDashboard();
 
     // Check API key
     updateApiKeyStatus();
+
+    // Load receipts (this blocks if it's migrating large amounts of data)
+    await loadReceipts();
+
+    // Check Fiscal Calendar
+    if (typeof checkFiscalCalendar === 'function') {
+        checkFiscalCalendar();
+    }
 }
 
 // ── AUTH / PIN SYSTEM ──────────────────────────────────────
