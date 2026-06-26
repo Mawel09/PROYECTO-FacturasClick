@@ -198,6 +198,8 @@ async function saveReceiptImage(receiptId, fileOrBase64) {
         
         if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:image')) {
             uploadTask = await storageRef.putString(fileOrBase64, 'data_url');
+        } else if (typeof fileOrBase64 === 'string') {
+            uploadTask = await storageRef.putString(fileOrBase64, 'base64');
         } else {
             uploadTask = await storageRef.put(fileOrBase64);
         }
@@ -1639,53 +1641,65 @@ function addProductRow() {
 
 async function saveReviewedReceipt() {
     if (!extractedData) return;
-
-    // Update store/date from form
-    extractedData.store = DOM.reviewStore.value.trim() || 'Desconocido';
-    extractedData.date = DOM.reviewDate.value || new Date().toISOString().split('T')[0];
-    extractedData.notes = DOM.reviewNotes.value.trim();
-
-    // Remove empty products
-    extractedData.products = extractedData.products.filter(p => p.name.trim());
-
-    if (extractedData.products.length === 0) {
-        showToast('Añade al menos un producto', 'warning');
-        return;
-    }
-
-    // Recalc total — ensure numeric
-    extractedData.total = +extractedData.products.reduce((s, p) => s + (Number(p.totalPrice) || 0), 0).toFixed(2);
-
-    const receiptId = generateId();
-    const receipt = {
-        id: receiptId,
-        store: extractedData.store,
-        date: extractedData.date,
-        total: extractedData.total,
-        products: extractedData.products,
-        notes: extractedData.notes,
-        hasImage: !!selectedImageBase64,
-        createdAt: new Date().toISOString()
-    };
-
-    // Sanitize before saving
-    const sanitized = sanitizeReceipt(receipt);
     
-    // Save image separately and get URL
-    if (selectedImageBase64) {
-        const url = await saveReceiptImage(receiptId, selectedImageBase64);
-        if (url) sanitized.imageUrl = url;
+    try {
+        // Disable button to prevent double clicks
+        DOM.btnSaveReceipt.disabled = true;
+        DOM.btnSaveReceipt.textContent = 'Guardando...';
+
+        // Update store/date from form
+        extractedData.store = DOM.reviewStore.value.trim() || 'Desconocido';
+        extractedData.date = DOM.reviewDate.value || new Date().toISOString().split('T')[0];
+        extractedData.notes = DOM.reviewNotes.value.trim();
+
+        // Remove empty products safely
+        extractedData.products = extractedData.products.filter(p => p.name && String(p.name).trim() !== '');
+
+        if (extractedData.products.length === 0) {
+            showToast('Añade al menos un producto', 'warning');
+            return;
+        }
+
+        // Recalc total — ensure numeric
+        extractedData.total = +extractedData.products.reduce((s, p) => s + (Number(p.totalPrice) || 0), 0).toFixed(2);
+
+        const receiptId = generateId();
+        const receipt = {
+            id: receiptId,
+            store: extractedData.store,
+            date: extractedData.date,
+            total: extractedData.total,
+            products: extractedData.products,
+            notes: extractedData.notes,
+            hasImage: !!selectedImageBase64,
+            createdAt: new Date().toISOString()
+        };
+
+        // Sanitize before saving
+        const sanitized = sanitizeReceipt(receipt);
+        
+        // Save image separately and get URL
+        if (selectedImageBase64) {
+            const url = await saveReceiptImage(receiptId, selectedImageBase64);
+            if (url) sanitized.imageUrl = url;
+        }
+
+        // Save to Firebase (this will trigger onSnapshot to update UI)
+        await db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized);
+
+        closeModal(DOM.modalReview);
+        extractedData = null;
+        selectedImageBase64 = null;
+        selectedFile = null;
+
+        showToast(`Factura de "${receipt.store}" guardada con ${receipt.products.length} productos`, 'success');
+    } catch(err) {
+        console.error('Error saving receipt:', err);
+        showToast('Error al guardar: ' + err.message, 'error');
+    } finally {
+        DOM.btnSaveReceipt.disabled = false;
+        DOM.btnSaveReceipt.textContent = 'Guardar Factura';
     }
-
-    // Save to Firebase (this will trigger onSnapshot to update UI)
-    await db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized);
-
-    closeModal(DOM.modalReview);
-    extractedData = null;
-    selectedImageBase64 = null;
-    selectedFile = null;
-
-    showToast(`Factura de "${receipt.store}" guardada con ${receipt.products.length} productos`, 'success');
 }
 
 // ── EXPORT / IMPORT ────────────────────────────────────────
