@@ -1354,32 +1354,41 @@ function openScanModal() {
 }
 
 function compressImage(file, maxWidth = 800) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.readAsDataURL(file);
+        reader.onerror = () => reject(new Error('No se pudo leer el archivo de imagen.'));
         reader.onload = (event) => {
             const img = new Image();
-            img.src = event.target.result;
+            // Si la imagen no se puede decodificar (p. ej. HEIC de iPhone en algunos
+            // navegadores, o un archivo corrupto) rechazamos en lugar de quedarnos
+            // colgados para siempre con el spinner girando.
+            img.onerror = () => reject(new Error('No se pudo procesar la imagen. Prueba con un archivo JPG o PNG.'));
             img.onload = () => {
-                let width = img.width;
-                let height = img.height;
+                try {
+                    let width = img.width;
+                    let height = img.height;
 
-                if (width > maxWidth) {
-                    height = Math.round((height * maxWidth) / width);
-                    width = maxWidth;
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Compress to JPEG at 0.7 quality to ensure small payload
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    resolve(compressedDataUrl);
+                } catch (err) {
+                    reject(new Error('No se pudo comprimir la imagen: ' + err.message));
                 }
-
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                // Compress to JPEG at 0.7 quality to ensure small payload
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                resolve(compressedDataUrl);
             };
+            img.src = event.target.result;
         };
+        reader.readAsDataURL(file);
     });
 }
 
@@ -1470,7 +1479,7 @@ Reglas:
                         role: 'user',
                         content: [
                             { type: 'text', text: prompt + '\n\nIMPORTANTE: El JSON debe ser devuelto de forma estricta, sin ningún markdown extra.' },
-                            { type: 'image_url', image_url: { url: `data:${selectedFile.type};base64,${selectedImageBase64}` } }
+                            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${selectedImageBase64}` } }
                         ]
                     }],
                     temperature: 0.1,
@@ -1496,7 +1505,10 @@ Reglas:
                             { text: prompt },
                             {
                                 inlineData: {
-                                    mimeType: selectedFile.type,
+                                    // La imagen siempre se recomprime a JPEG en compressImage(),
+                                    // así que el mimeType DEBE ser image/jpeg (no el tipo original
+                                    // del archivo, o Gemini rechazará/leerá mal la imagen).
+                                    mimeType: 'image/jpeg',
                                     data: selectedImageBase64
                                 }
                             }
@@ -1504,7 +1516,7 @@ Reglas:
                     }],
                     generationConfig: {
                         temperature: 0.1,
-                        maxOutputTokens: 4096,
+                        maxOutputTokens: 8192,
                         responseMimeType: "application/json"
                     }
                 })
@@ -1518,8 +1530,8 @@ Reglas:
             const data = await response.json();
             text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         }
-        let jsonStr = text.replace(/^```(?:json)?s*/i, '').replace(/```s*$/i, '').trim();
-        jsonStr = jsonStr.replace(/,s*([]}])/g, '$1');
+        let jsonStr = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
 
         const parsed = JSON.parse(jsonStr);
 
@@ -1755,8 +1767,8 @@ async function exportToPDFFiscal() {
         
         doc.setFontSize(10);
         const dateStr = new Date().toLocaleDateString('es-ES');
-        doc.text(\`Generado el: \${dateStr}\`, 14, 28);
-        doc.text(\`Total de facturas: \${receipts.length}\`, 14, 34);
+        doc.text(`Generado el: ${dateStr}`, 14, 28);
+        doc.text(`Total de facturas: ${receipts.length}`, 14, 34);
 
         // Tabla resumen
         const summaryData = receipts.map(r => [
@@ -1807,10 +1819,10 @@ async function exportToPDFFiscal() {
             doc.addPage();
             
             doc.setFontSize(16);
-            doc.text(\`Factura: \${r.store}\`, 14, 20);
+            doc.text(`Factura: ${r.store}`, 14, 20);
             doc.setFontSize(10);
-            doc.text(\`Fecha: \${formatDate(r.date)} | Total: \${formatCurrency(r.total)}\`, 14, 28);
-            doc.text(\`ID Sistema: \${r.id}\`, 14, 34);
+            doc.text(`Fecha: ${formatDate(r.date)} | Total: ${formatCurrency(r.total)}`, 14, 28);
+            doc.text(`ID Sistema: ${r.id}`, 14, 34);
 
             // Tabla de productos
             const productData = r.items.map(item => [
@@ -1886,7 +1898,7 @@ async function exportToPDFFiscal() {
 
         // Guardar
         const mesYear = new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).replace(' ', '_');
-        doc.save(\`Facturas_Fiscales_\${mesYear}.pdf\`);
+        doc.save(`Facturas_Fiscales_${mesYear}.pdf`);
         showToast('PDF Fiscal generado correctamente', 'success');
 
     } catch (e) {
