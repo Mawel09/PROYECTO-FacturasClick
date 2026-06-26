@@ -138,8 +138,8 @@
                 <div class="api-key-banner hidden" id="api-key-banner">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                     <div class="api-key-banner-text">
-                        <h3>Configura tu API Key de Gemini</h3>
-                        <p>Para escanear facturas con IA necesitas una clave de Google AI Studio. Ve a Configuración para añadirla.</p>
+                        <h3>Configura tu API Key de IA</h3>
+                        <p>Para escanear facturas necesitas una clave de Google Gemini o de OpenAI. Ve a Configuración para añadirla.</p>
                     </div>
                     <button class="btn btn-sm btn-secondary" id="btn-go-settings">Configurar</button>
                 </div>
@@ -491,7 +491,7 @@
             <div id="scan-loading-state" style="display:none;">
                 <div class="ai-loading">
                     <div class="ai-loading-spinner"></div>
-                    <p>Gemini está analizando tu ticket<span class="ai-dots"></span></p>
+                    <p>La IA está analizando tu ticket<span class="ai-dots"></span></p>
                     <p style="font-size:12px;color:var(--text-muted);">Extrayendo productos, precios y cantidades...</p>
                 </div>
             </div>
@@ -607,6 +607,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 
     <!-- App Script (v22 to break cache) -->
-    <script src="app.js?v=22"></script>
+    <script src="app.js?v=23"></script>
 </body>
 </html>
