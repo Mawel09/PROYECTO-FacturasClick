@@ -1712,6 +1712,7 @@ async function saveReviewedReceipt() {
     } catch(err) {
         console.error('Error saving receipt:', err);
         showToast('Error al guardar: ' + err.message, 'error');
+        alert('Detalle Técnico del Error:\n' + err.message + '\n\nSi el error es Timeout, tu navegador no puede contactar con la base de datos. Si es otro error, hazle una foto a este mensaje para que podamos arreglarlo.');
     } finally {
         DOM.btnSaveReceipt.disabled = false;
         DOM.btnSaveReceipt.textContent = 'Guardar Factura';
