@@ -320,12 +320,38 @@ async function saveReceipts() {
     // Deprecated. We save individual documents to Firebase now.
 }
 
+let currentApiKey = '';
+
 function getApiKey() {
-    return localStorage.getItem(API_KEY_STORAGE) || '';
+    return currentApiKey || localStorage.getItem(API_KEY_STORAGE) || '';
 }
 
-function setApiKey(key) {
-    localStorage.setItem(API_KEY_STORAGE, key.trim());
+async function setApiKey(key) {
+    key = key.trim();
+    currentApiKey = key;
+    localStorage.setItem(API_KEY_STORAGE, key);
+    if (currentUserUid) {
+        try {
+            await db.collection('users').doc(currentUserUid).collection('settings').doc('apiKey').set({ value: key });
+        } catch (e) {
+            console.error('Error saving API Key to Firebase:', e);
+        }
+    }
+}
+
+async function loadApiKey() {
+    if (!currentUserUid) return;
+    try {
+        const doc = await db.collection('users').doc(currentUserUid).collection('settings').doc('apiKey').get();
+        if (doc.exists && doc.data().value) {
+            const key = doc.data().value;
+            currentApiKey = key;
+            localStorage.setItem(API_KEY_STORAGE, key);
+            updateApiKeyStatus();
+        }
+    } catch (e) {
+        console.error('Error loading API Key from Firebase:', e);
+    }
 }
 
 // ── TOASTS ─────────────────────────────────────────────────
@@ -1285,6 +1311,9 @@ function closeAllModals() {
 
 // ── SCAN FLOW ──────────────────────────────────────────────
 
+let scanQueue = [];
+let isProcessingQueue = false;
+let totalQueueCount = 0;
 let selectedFile = null;
 let selectedImageBase64 = null;
 
@@ -1338,7 +1367,245 @@ function compressImage(file, maxWidth = 800) {
     });
 }
 
-async function handleFileSelect(file) {
+async function handleFileSelect(files) {
+    if (!files || files.length === 0) return;
+
+    // Validate and add to queue
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/heic'];
+    
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!validTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.heic')) {
+            showToast('Formato no soportado: ' + file.name, 'error');
+            continue;
+        }
+        if (file.size > 15 * 1024 * 1024) {
+            showToast('Imagen muy grande: ' + file.name, 'error');
+            continue;
+        }
+        scanQueue.push(file);
+    }
+
+    if (scanQueue.length > 0) {
+        showToast(`Añadidos ${scanQueue.length} tickets a la cola`, 'success');
+        
+        // Hide dropzone content and show generic processing state
+        DOM.uploadPreview.style.display = 'none';
+        DOM.btnProcessScan.disabled = false;
+        
+        if (!isProcessingQueue) {
+            totalQueueCount = scanQueue.length;
+            startProcessingQueue();
+        } else {
+            totalQueueCount += scanQueue.length;
+        }
+    }
+}
+
+async function startProcessingQueue() {
+    if (isProcessingQueue) return;
+    
+    const apiKey = getApiKey();
+    if (!apiKey) {
+        showToast('API Key no configurada', 'error');
+        return;
+    }
+    
+    isProcessingQueue = true;
+    processNextInQueue();
+}
+
+async function processNextInQueue() {
+    if (scanQueue.length === 0) {
+        isProcessingQueue = false;
+        totalQueueCount = 0;
+        closeModal(DOM.modalScan);
+        closeModal(DOM.modalReview);
+        return;
+    }
+
+    const currentFile = scanQueue.shift();
+    selectedFile = currentFile;
+    
+    // Update UI indicators
+    const currentNum = totalQueueCount - scanQueue.length;
+    DOM.scanUploadState.style.display = 'none';
+    DOM.scanLoadingState.style.display = 'block';
+    DOM.scanLoadingState.querySelector('h3').textContent = `Analizando ticket ${currentNum} de ${totalQueueCount}...`;
+    
+    const queueIndicator = document.getElementById('queue-indicator');
+    if (queueIndicator) {
+        if (scanQueue.length > 0) {
+            queueIndicator.textContent = `(Quedan ${scanQueue.length})`;
+        } else {
+            queueIndicator.textContent = '';
+        }
+    }
+
+    try {
+        // Compress
+        const compressedDataUrl = await compressImage(currentFile, 800);
+        selectedImageBase64 = compressedDataUrl.split(',')[1];
+
+        const apiKey = getApiKey();
+        const prompt = `Analiza esta imagen de un ticket/factura de compra y extrae la información en formato JSON estricto.
+
+IMPORTANTE: Responde ÚNICAMENTE con un JSON válido, sin markdown, sin backticks, sin texto adicional.
+
+El JSON debe tener esta estructura exacta:
+{
+  "store": "nombre del comercio",
+  "date": "YYYY-MM-DD",
+  "products": [
+    {
+      "name": "nombre del producto",
+      "qty": 1,
+      "unitPrice": 0.00,
+      "totalPrice": 0.00
+    }
+  ],
+  "total": 0.00
+}
+
+Reglas:
+- Si no puedes leer el nombre del comercio, pon "Desconocido"
+- Si no puedes leer la fecha, usa la fecha de hoy: ${new Date().toISOString().split('T')[0]}
+- Los precios deben ser números con 2 decimales
+- qty debe ser un entero (mínimo 1)
+- totalPrice = qty * unitPrice
+- total es la suma de todos los totalPrice
+- Extrae TODOS los productos visibles en el ticket
+- El nombre del producto debe ser descriptivo y en español si es posible`;
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        {
+                            inlineData: {
+                                mimeType: currentFile.type,
+                                data: selectedImageBase64
+                            }
+                        }
+                    ]
+                }],
+                generationConfig: {
+                    temperature: 0.1,
+                    maxOutputTokens: 4096,
+                    responseMimeType: "application/json"
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData?.error?.message || `Error ${response.status}`);
+        }
+
+        const data = await response.json();
+        let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        let jsonStr = text.replace(/^```(?:json)?s*/i, '').replace(/```s*$/i, '').trim();
+        jsonStr = jsonStr.replace(/,s*([]}])/g, '$1');
+
+        const parsed = JSON.parse(jsonStr);
+
+        if (!parsed.products || !Array.isArray(parsed.products)) {
+            throw new Error('La IA no devolvió una lista válida');
+        }
+
+        extractedData = {
+            store: parsed.store || 'Desconocido',
+            date: parsed.date || new Date().toISOString().split('T')[0],
+            products: parsed.products.map(p => ({
+                name: String(p.name || 'Producto').trim(),
+                qty: Math.max(1, Math.round(Number(p.qty) || 1)),
+                unitPrice: Math.max(0, Number(p.unitPrice) || 0),
+                totalPrice: Math.max(0, Number(p.totalPrice) || 0)
+            })),
+            total: Number(parsed.total) || 0,
+            notes: ''
+        };
+
+        const calcTotal = extractedData.products.reduce((s, p) => s + p.totalPrice, 0);
+        if (Math.abs(calcTotal - extractedData.total) > 0.5) extractedData.total = calcTotal;
+
+        // Configure Review modal for Queue mode
+        const skipBtn = document.getElementById('btn-skip-receipt');
+        if (scanQueue.length > 0) {
+            skipBtn.style.display = 'inline-block';
+        } else {
+            skipBtn.style.display = 'none';
+        }
+
+        closeModal(DOM.modalScan);
+        openReviewModal();
+        showToast(`${extractedData.products.length} productos extraídos`, 'success');
+
+    } catch (error) {
+        console.error('API Error:', error);
+        showToast(`Error leyendo ticket: ${error.message}`, 'error');
+        // Automatically proceed to next if failed? Or let user handle?
+        // Let's proceed to next
+        setTimeout(processNextInQueue, 2000);
+    }
+}
+
+// ── END OF SCANNING ────────────────────────────────────────
+
+function openScanModal() {
+    const key = getApiKey();
+    if (!key) {
+        showToast('Configura tu API Key de Gemini antes de escanear', 'warning');
+        navigateTo('settings');
+        return;
+    }
+    // Reset state
+    selectedFile = null;
+    selectedImageBase64 = null;
+    DOM.uploadPreview.style.display = 'none';
+    DOM.uploadPreview.src = '';
+    DOM.btnProcessScan.disabled = true;
+    DOM.scanUploadState.style.display = 'block';
+    DOM.scanLoadingState.style.display = 'none';
+    DOM.receiptFileInput.value = '';
+
+    openModal(DOM.modalScan);
+}
+
+function compressImage(file, maxWidth = 800) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Compress to JPEG at 0.7 quality to ensure small payload
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                resolve(compressedDataUrl);
+            };
+        };
+    });
+}
+
+async function handleFileSelect(e.dataTransfer.files) {
     if (!file) return;
 
     // Validate
@@ -1635,10 +1902,19 @@ async function saveReviewedReceipt() {
     // Save to Firebase (this will trigger onSnapshot to update UI)
     await db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized);
 
-    closeModal(DOM.modalReview);
+
     extractedData = null;
     selectedImageBase64 = null;
     selectedFile = null;
+
+    if (scanQueue.length > 0) {
+        closeModal(DOM.modalReview);
+        processNextInQueue();
+    } else {
+        closeModal(DOM.modalReview);
+        isProcessingQueue = false;
+        totalQueueCount = 0;
+    }
 
     showToast(`Factura de "${receipt.store}" guardada con ${receipt.products.length} productos`, 'success');
 }
@@ -1769,16 +2045,16 @@ function initEventListeners() {
         e.preventDefault();
         DOM.uploadZone.classList.remove('drag-over');
         const file = e.dataTransfer.files[0];
-        if (file) handleFileSelect(file);
+        if (e.dataTransfer.files.length) handleFileSelect(e.dataTransfer.files);
     });
 
     // File input
     DOM.receiptFileInput.addEventListener('change', (e) => {
-        if (e.target.files[0]) handleFileSelect(e.target.files[0]);
+        if (e.target.files.length) handleFileSelect(e.target.files);
     });
 
     // Process scan
-    DOM.btnProcessScan.addEventListener('click', processWithGemini);
+    DOM.btnProcessScan.addEventListener('click', startProcessingQueue);
 
     // Scan modal close
     document.getElementById('btn-close-scan').addEventListener('click', () => closeModal(DOM.modalScan));
@@ -1786,7 +2062,18 @@ function initEventListeners() {
 
     // Review modal
     document.getElementById('btn-close-review').addEventListener('click', () => closeModal(DOM.modalReview));
-    document.getElementById('btn-cancel-review').addEventListener('click', () => closeModal(DOM.modalReview));
+    document.getElementById('btn-cancel-review').addEventListener('click', () => {
+        closeModal(DOM.modalReview);
+        scanQueue = []; // Vaciar cola al cancelar
+        isProcessingQueue = false;
+    });
+    document.getElementById('btn-skip-receipt').addEventListener('click', () => {
+        closeModal(DOM.modalReview);
+        extractedData = null;
+        selectedImageBase64 = null;
+        selectedFile = null;
+        processNextInQueue();
+    });
     DOM.btnAddProductRow.addEventListener('click', addProductRow);
     DOM.btnSaveReceipt.addEventListener('click', saveReviewedReceipt);
 
@@ -1897,11 +2184,12 @@ function unlockApp() {
 }
 
 // Escuchar cambios de estado de autenticación
-firebase.auth().onAuthStateChanged(user => {
+firebase.auth().onAuthStateChanged(async user => {
     const lockScreen = document.getElementById('lock-screen');
     if (user) {
         // Usuario logueado
         currentUserUid = user.uid;
+        await loadApiKey();
         unlockApp();
         document.getElementById('btn-logout').addEventListener('click', () => {
             firebase.auth().signOut().then(() => {
