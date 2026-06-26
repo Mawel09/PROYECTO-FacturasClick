@@ -1684,32 +1684,23 @@ async function saveReviewedReceipt() {
 
         // Sanitize before saving
         const sanitized = sanitizeReceipt(receipt);
-        
-        // Timeout Helper
-        const withTimeout = (promise, ms, name) => {
-            return Promise.race([
-                promise,
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout en: ' + name)), ms))
-            ]);
-        };
 
-        // Save image separately and get URL
+        // 1. Save to Firebase instantly (Offline persistence will handle this in the background)
+        db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized).catch(err => {
+            console.error('Background sync error for receipt:', err);
+        });
+
+        // 2. Upload image in the background and update the document later
         if (selectedImageBase64) {
-            try {
-                const url = await withTimeout(saveReceiptImage(receiptId, selectedImageBase64), 8000, 'Subir Imagen');
-                if (url) sanitized.imageUrl = url;
-            } catch (e) {
-                console.warn('Error subiendo imagen, guardando factura sin imagen:', e);
-            }
+            saveReceiptImage(receiptId, selectedImageBase64).then(url => {
+                if (url) {
+                    db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).update({ imageUrl: url })
+                      .catch(e => console.warn('Error updating receipt with image URL:', e));
+                }
+            }).catch(e => console.warn('Background image upload failed:', e));
         }
 
-        // Save to Firebase (this will trigger onSnapshot to update UI)
-        await withTimeout(
-            db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized),
-            8000,
-            'Guardar en base de datos'
-        );
-
+        // 3. Close modal and reset UI instantly
         closeModal(DOM.modalReview);
         extractedData = null;
         selectedImageBase64 = null;
@@ -1719,7 +1710,6 @@ async function saveReviewedReceipt() {
     } catch(err) {
         console.error('Error saving receipt:', err);
         showToast('Error al guardar: ' + err.message, 'error');
-        alert('Detalle Técnico del Error:\n' + err.message + '\n\nSi el error es Timeout, tu navegador no puede contactar con la base de datos. Si es otro error, hazle una foto a este mensaje para que podamos arreglarlo.');
     } finally {
         DOM.btnSaveReceipt.disabled = false;
         DOM.btnSaveReceipt.textContent = 'Guardar Factura';
