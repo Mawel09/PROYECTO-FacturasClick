@@ -1726,6 +1726,179 @@ async function saveReviewedReceipt() {
 
 // ── EXPORT / IMPORT ────────────────────────────────────────
 
+async function exportToPDFFiscal() {
+    if (receipts.length === 0) {
+        showToast('No hay facturas para exportar', 'info');
+        return;
+    }
+
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        showToast('Error cargando librería PDF', 'error');
+        return;
+    }
+
+    showToast('Generando PDF Fiscal... (puede tardar varios segundos)', 'info');
+    
+    // Deshabilitar botón para evitar doble clic
+    const btn = document.getElementById('btn-settings-export-pdf');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<div class="spinner"></div> Generando...';
+    btn.disabled = true;
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // PORTADA / RESUMEN
+        doc.setFontSize(20);
+        doc.text('Resumen de Facturas Fiscales', 14, 20);
+        
+        doc.setFontSize(10);
+        const dateStr = new Date().toLocaleDateString('es-ES');
+        doc.text(\`Generado el: \${dateStr}\`, 14, 28);
+        doc.text(\`Total de facturas: \${receipts.length}\`, 14, 34);
+
+        // Tabla resumen
+        const summaryData = receipts.map(r => [
+            formatDate(r.date),
+            r.store,
+            formatCurrency(r.total)
+        ]);
+
+        const grandTotal = receipts.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
+        summaryData.push(['', 'TOTAL GENERAL', formatCurrency(grandTotal)]);
+
+        doc.autoTable({
+            startY: 40,
+            head: [['Fecha', 'Comercio', 'Total']],
+            body: summaryData,
+            theme: 'grid',
+            headStyles: { fillColor: [44, 62, 80] },
+            footStyles: { fillColor: [44, 62, 80], textColor: 255, fontStyle: 'bold' },
+            willDrawCell: function(data) {
+                // Poner en negrita la última fila de Total
+                if (data.row.index === summaryData.length - 1) {
+                    data.cell.styles.fontStyle = 'bold';
+                    data.cell.styles.textColor = [0, 0, 0];
+                }
+            }
+        });
+
+        // Helper to fetch image to base64 via Proxy/CORS
+        const getBase64Image = async (url) => {
+            try {
+                const response = await fetch(url);
+                const blob = await response.blob();
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            } catch (err) {
+                console.error("Error fetching image for PDF:", err);
+                return null;
+            }
+        };
+
+        // DETALLES POR FACTURA
+        for (let i = 0; i < receipts.length; i++) {
+            const r = receipts[i];
+            doc.addPage();
+            
+            doc.setFontSize(16);
+            doc.text(\`Factura: \${r.store}\`, 14, 20);
+            doc.setFontSize(10);
+            doc.text(\`Fecha: \${formatDate(r.date)} | Total: \${formatCurrency(r.total)}\`, 14, 28);
+            doc.text(\`ID Sistema: \${r.id}\`, 14, 34);
+
+            // Tabla de productos
+            const productData = r.items.map(item => [
+                item.description,
+                item.quantity,
+                formatCurrency(item.price),
+                formatCurrency(item.total)
+            ]);
+
+            doc.autoTable({
+                startY: 40,
+                head: [['Producto', 'Cant', 'Precio', 'Subtotal']],
+                body: productData,
+                theme: 'striped',
+                headStyles: { fillColor: [52, 152, 219] }
+            });
+
+            // Incrustar imagen si existe
+            if (r.hasImage && r.imageUrl) {
+                const base64Img = await getBase64Image(r.imageUrl);
+                if (base64Img) {
+                    let finalY = doc.lastAutoTable.finalY || 40;
+                    
+                    // Si no cabe, añadir página para la foto
+                    if (finalY > 150) {
+                        doc.addPage();
+                        finalY = 20;
+                    } else {
+                        finalY += 10;
+                    }
+
+                    doc.setFontSize(12);
+                    doc.setTextColor(100);
+                    doc.text('Anexo Fotográfico Original:', 14, finalY);
+                    
+                    // Calcular proporciones para que encaje
+                    try {
+                        const imgProps = doc.getImageProperties(base64Img);
+                        const pdfWidth = doc.internal.pageSize.getWidth();
+                        const pdfHeight = doc.internal.pageSize.getHeight();
+                        
+                        const margin = 14;
+                        const maxWidth = pdfWidth - (margin * 2);
+                        const maxHeight = pdfHeight - finalY - margin;
+                        
+                        let imgWidth = imgProps.width;
+                        let imgHeight = imgProps.height;
+                        
+                        const ratio = Math.min(maxWidth / imgWidth, maxHeight / imgHeight);
+                        imgWidth = imgWidth * ratio;
+                        imgHeight = imgHeight * ratio;
+                        
+                        doc.addImage(base64Img, imgProps.fileType, margin, finalY + 5, imgWidth, imgHeight);
+                    } catch (e) {
+                        console.error('Error adding image to PDF:', e);
+                        doc.setTextColor(231, 76, 60);
+                        doc.text('Error al procesar la imagen.', 14, finalY + 10);
+                    }
+                } else {
+                    let finalY = doc.lastAutoTable.finalY || 40;
+                    doc.setTextColor(231, 76, 60); // Rojo
+                    doc.text('Error descargando comprobante original.', 14, finalY + 15);
+                }
+            } else {
+                let finalY = doc.lastAutoTable.finalY || 40;
+                doc.setTextColor(231, 76, 60); // Rojo
+                doc.setFontSize(11);
+                doc.text('ATENCIÓN: Sin comprobante fotográfico original.', 14, finalY + 15);
+                doc.text('Este gasto presenta riesgo fiscal y podría no ser deducible.', 14, finalY + 22);
+            }
+            doc.setTextColor(0); // Reset a negro
+        }
+
+        // Guardar
+        const mesYear = new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).replace(' ', '_');
+        doc.save(\`Facturas_Fiscales_\${mesYear}.pdf\`);
+        showToast('PDF Fiscal generado correctamente', 'success');
+
+    } catch (e) {
+        console.error('Error generating PDF:', e);
+        showToast('Error al generar el PDF', 'error');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+
 async function exportData() {
     if (receipts.length === 0) {
         showToast('No hay datos para exportar', 'info');
@@ -1920,6 +2093,8 @@ function initEventListeners() {
 
     // Settings - Export
     DOM.btnSettingsExport.addEventListener('click', exportData);
+    const btnPdf = document.getElementById('btn-settings-export-pdf');
+    if(btnPdf) btnPdf.addEventListener('click', exportToPDFFiscal);
     if (DOM.btnExportData) DOM.btnExportData.addEventListener('click', exportData);
 
     // Settings - Import
