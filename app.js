@@ -1948,6 +1948,7 @@ async function init() {
     initEventListeners();
 
     // Check API key
+    await loadApiKey();
     updateApiKeyStatus();
 
     // Load receipts (this blocks if it's migrating large amounts of data)
