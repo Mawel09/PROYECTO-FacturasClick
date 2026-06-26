@@ -1334,10 +1334,11 @@ let selectedFile = null;
 let selectedImageBase64 = null;
 
 function openScanModal() {
-    const key = getApiKey();
-    if (!key) {
-        showToast('Configura tu API Key de Gemini antes de escanear', 'warning');
-        navigateTo('settings');
+    // La IA se sirve desde el backend para usuarios autenticados; ya no hace falta
+    // que el cliente configure su propia clave. Solo bloqueamos si, por algún motivo,
+    // no hay sesión activa ni clave local de respaldo.
+    if (!firebase.auth().currentUser && !getApiKey()) {
+        showToast('Inicia sesión para escanear facturas', 'warning');
         return;
     }
     // Reset state
@@ -1418,14 +1419,84 @@ async function handleFileSelect(file) {
     reader.readAsDataURL(file);
 }
 
-async function processWithGemini() {
-    if (!selectedFile) return;
-    
+// Pide a la IA que lea el ticket. Devuelve el texto JSON crudo.
+// 1) Primario: backend seguro /api/scan (la clave de Gemini vive en el servidor).
+// 2) Respaldo: llamada directa a Gemini con una clave local, solo si existe
+//    (útil en desarrollo o si el proxy aún no está configurado).
+async function requestAIScan(prompt) {
+    const user = firebase.auth().currentUser;
+
+    if (user) {
+        try {
+            const token = await user.getIdToken();
+            const resp = await fetch('/api/scan', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    imageBase64: selectedImageBase64,
+                    mimeType: 'image/jpeg',
+                    prompt: prompt
+                })
+            });
+
+            if (resp.ok) {
+                const data = await resp.json();
+                return data.text || '';
+            }
+
+            // 503 = el proxy no está configurado en el servidor todavía → probamos
+            // el respaldo con clave local. Cualquier otro error sí lo propagamos.
+            if (resp.status !== 503) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.error || `Error del servicio de IA (${resp.status})`);
+            }
+            console.warn('Proxy de IA no configurado (503). Intentando clave local…');
+        } catch (e) {
+            // Error de red al alcanzar el proxy: si no hay clave local, propagamos.
+            if (!getApiKey()) throw e;
+            console.warn('No se pudo usar el proxy de IA, usando clave local:', e.message);
+        }
+    }
+
+    // ── Respaldo: Gemini directo con clave local ──────────────────────
     const apiKey = getApiKey();
     if (!apiKey) {
-        showToast('API Key no configurada', 'error');
-        return;
+        throw new Error('Servicio de IA no disponible. Inténtalo de nuevo más tarde.');
     }
+
+    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{
+                parts: [
+                    { text: prompt },
+                    // La imagen siempre se recomprime a JPEG en compressImage().
+                    { inlineData: { mimeType: 'image/jpeg', data: selectedImageBase64 } }
+                ]
+            }],
+            generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 8192,
+                responseMimeType: "application/json"
+            }
+        })
+    });
+
+    if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.error?.message || `Error Gemini ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+async function processWithGemini() {
+    if (!selectedFile) return;
 
     DOM.scanUploadState.style.display = 'none';
     DOM.scanLoadingState.style.display = 'block';
@@ -1464,72 +1535,11 @@ Reglas:
 - Extrae TODOS los productos visibles en el ticket
 - El nombre del producto debe ser descriptivo y en español si es posible`;
 
-        let text = '';
-        if (apiKey.startsWith('sk-')) {
-            // Usa OpenAI (gpt-4o-mini)
-            const oaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: [{
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: prompt + '\n\nIMPORTANTE: El JSON debe ser devuelto de forma estricta, sin ningún markdown extra.' },
-                            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${selectedImageBase64}` } }
-                        ]
-                    }],
-                    temperature: 0.1,
-                    response_format: { type: "json_object" }
-                })
-            });
+        // La IA se llama a través del backend seguro (/api/scan), que oculta la
+        // clave de Gemini en el servidor. Si el proxy no está disponible y hay una
+        // clave local guardada, se usa como respaldo (solo para desarrollo).
+        const text = await requestAIScan(prompt);
 
-            if (!oaiResponse.ok) {
-                const errData = await oaiResponse.json().catch(() => ({}));
-                throw new Error(errData?.error?.message || `Error OpenAI ${oaiResponse.status}`);
-            }
-
-            const data = await oaiResponse.json();
-            text = data.choices?.[0]?.message?.content || '';
-        } else {
-            // Usa Gemini
-            const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [
-                            { text: prompt },
-                            {
-                                inlineData: {
-                                    // La imagen siempre se recomprime a JPEG en compressImage(),
-                                    // así que el mimeType DEBE ser image/jpeg (no el tipo original
-                                    // del archivo, o Gemini rechazará/leerá mal la imagen).
-                                    mimeType: 'image/jpeg',
-                                    data: selectedImageBase64
-                                }
-                            }
-                        ]
-                    }],
-                    generationConfig: {
-                        temperature: 0.1,
-                        maxOutputTokens: 8192,
-                        responseMimeType: "application/json"
-                    }
-                })
-            });
-
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData?.error?.message || `Error Gemini ${response.status}`);
-            }
-
-            const data = await response.json();
-            text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        }
         let jsonStr = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
         jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
 
