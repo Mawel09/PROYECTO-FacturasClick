@@ -23,6 +23,13 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+
+// Habilitar persistencia offline para evitar bloqueos si la red falla o está capada
+db.enablePersistence({ synchronizeTabs: true })
+    .catch(function(err) {
+        console.warn('Persistence error:', err.code);
+    });
+
 const storage = firebase.storage();
 
 // ── STATE ──────────────────────────────────────────────────
