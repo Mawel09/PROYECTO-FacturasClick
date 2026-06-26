@@ -1,3 +1,5 @@
+<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/b2174b86-b627-48dc-a781-ad22b0dbe1c8" />
+
 # ThalassaCRM - Mini CRM Visual y Tablero de Leads
 
 **ThalassaCRM** es una aplicación web interactiva, moderna e intuitiva diseñada para que las empresas gestionen sus clientes o leads de forma visual a través de un tablero Kanban interactivo.
