@@ -9,6 +9,7 @@ const API_KEY_STORAGE = 'thalassa_gemini_api_key';
 const PIN_HASH_STORAGE = 'thalassa_pin_hash';
 const SESSION_KEY = 'thalassa_session_active';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const MONTHLY_SCAN_LIMIT = 30; // facturas por usuario y mes (debe coincidir con el backend)
 
 // ── FIREBASE CONFIGURATION ─────────────────────────────────
 const firebaseConfig = {
@@ -38,6 +39,7 @@ let currentUserUid = null;
 let productCategories = {}; // { "product name": "peluqueria" | "estetica" | "general" }
 let currentEditId = null; // for detail modal delete
 let extractedData = null; // temp data from AI scan
+let monthlyUsage = 0; // facturas escaneadas este mes (límite mensual)
 
 // Currency formatter
 const currency = new Intl.NumberFormat('es-ES', {
@@ -111,6 +113,7 @@ const DOM = {
     btnProcessScan: document.getElementById('btn-process-scan'),
     scanUploadState: document.getElementById('scan-upload-state'),
     scanLoadingState: document.getElementById('scan-loading-state'),
+    scanUsageInfo: document.getElementById('scan-usage-info'),
 
     // Review modal
     modalReview: document.getElementById('modal-review'),
@@ -319,6 +322,9 @@ async function loadReceipts() {
             }, 150);
         });
 
+        // Escuchar el contador de uso mensual en tiempo real
+        listenUsage();
+
     } catch (e) {
         console.error('Error loading receipts from Firebase:', e);
         showToast('Error de conexión con la base de datos', 'error');
@@ -327,6 +333,39 @@ async function loadReceipts() {
 
 async function saveReceipts() {
     // Deprecated. We save individual documents to Firebase now.
+}
+
+// Mes actual en formato 'YYYY-MM' (UTC), igual que el backend.
+function getUsageMonth() {
+    return new Date().toISOString().slice(0, 7);
+}
+
+// Escucha el documento de uso del usuario y mantiene `monthlyUsage` al día.
+// El contador real lo lleva el servidor (api/scan.js); aquí solo lo reflejamos.
+function listenUsage() {
+    if (!currentUserUid) return;
+    db.collection('users').doc(currentUserUid).collection('settings').doc('usage')
+        .onSnapshot(doc => {
+            if (doc.exists && doc.data().month === getUsageMonth()) {
+                monthlyUsage = doc.data().count || 0;
+            } else {
+                monthlyUsage = 0; // mes nuevo o sin datos
+            }
+            updateUsageUI();
+        }, err => console.warn('No se pudo leer el contador de uso:', err.code));
+}
+
+// Actualiza el texto del contador en el modal de escaneo.
+function updateUsageUI() {
+    if (!DOM.scanUsageInfo) return;
+    const remaining = Math.max(0, MONTHLY_SCAN_LIMIT - monthlyUsage);
+    if (remaining === 0) {
+        DOM.scanUsageInfo.innerHTML = `<strong>Límite mensual alcanzado</strong> (${MONTHLY_SCAN_LIMIT}/${MONTHLY_SCAN_LIMIT}). Se renueva el día 1.`;
+        DOM.scanUsageInfo.style.color = 'var(--danger, #e74c3c)';
+    } else {
+        DOM.scanUsageInfo.innerHTML = `Has usado <strong>${monthlyUsage}</strong> de <strong>${MONTHLY_SCAN_LIMIT}</strong> facturas este mes (${remaining} restantes).`;
+        DOM.scanUsageInfo.style.color = 'var(--text-secondary)';
+    }
 }
 
 let currentApiKey = '';
@@ -1342,6 +1381,12 @@ function openScanModal() {
         showToast('Inicia sesión para escanear facturas', 'warning');
         return;
     }
+    // Bloquear si ya se alcanzó el límite mensual (el servidor también lo controla)
+    if (monthlyUsage >= MONTHLY_SCAN_LIMIT) {
+        showToast(`Has alcanzado el límite de ${MONTHLY_SCAN_LIMIT} facturas este mes. Se renueva el día 1.`, 'warning');
+        return;
+    }
+    updateUsageUI();
     // Reset state
     selectedFile = null;
     selectedImageBase64 = null;
@@ -1482,7 +1527,9 @@ async function requestAIScan(prompt) {
             generationConfig: {
                 temperature: 0.1,
                 maxOutputTokens: 8192,
-                responseMimeType: "application/json"
+                responseMimeType: "application/json",
+                // Desactiva el "modo pensamiento" de 2.5 Flash: más barato y rápido.
+                thinkingConfig: { thinkingBudget: 0 }
             }
         })
     });
@@ -1572,8 +1619,13 @@ Reglas:
 
     } catch (error) {
         console.error('API Error:', error);
-        showToast(`Error leyendo ticket: ${error.message}`, 'error');
-        
+        // Mensaje del límite mensual: mostrarlo limpio, sin el prefijo de error de lectura.
+        if (/l[íi]mite de \d+ facturas/i.test(error.message || '')) {
+            showToast(error.message, 'warning');
+        } else {
+            showToast(`Error leyendo ticket: ${error.message}`, 'error');
+        }
+
         DOM.scanUploadState.style.display = 'block';
         DOM.scanLoadingState.style.display = 'none';
         DOM.btnProcessScan.disabled = false;
