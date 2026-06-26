@@ -242,14 +242,14 @@ async function deleteReceiptImage(receiptId) {
 
 async function loadProductCategories() {
     try {
-        const doc = await db.collection('users').doc(currentUserUid).collection('settings').doc('productCategories').get();
-        if (doc.exists) {
+        const doc = await readWithTimeout(db.collection('users').doc(currentUserUid).collection('settings').doc('productCategories').get());
+        if (doc && doc.exists) {
             productCategories = doc.data() || {};
         } else {
             productCategories = {};
         }
     } catch (e) {
-        console.error('Error loading product categories from Firebase:', e);
+        console.warn('Timeout cargando product categories, usando array vacío:', e);
         productCategories = {};
     }
 }
@@ -348,10 +348,18 @@ async function setApiKey(key) {
     }
 }
 
+// Timeout helper para lecturas
+const readWithTimeout = (promise, ms = 3000) => {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Read timeout')), ms))
+    ]);
+};
+
 async function loadApiKey() {
     if (!currentUserUid) return;
     try {
-        const doc = await db.collection('users').doc(currentUserUid).collection('settings').doc('apiKey').get();
+        const doc = await readWithTimeout(db.collection('users').doc(currentUserUid).collection('settings').doc('apiKey').get());
         if (doc.exists && doc.data().value) {
             const key = doc.data().value;
             currentApiKey = key;
@@ -359,7 +367,7 @@ async function loadApiKey() {
             updateApiKeyStatus();
         }
     } catch (e) {
-        console.error('Error loading API Key from Firebase:', e);
+        console.warn('Network timeout o error cargando API Key, usando caché local si existe');
     }
 }
 
@@ -1961,9 +1969,8 @@ async function init() {
     // Attach event listeners before loading data so UI doesn't freeze
     initEventListeners();
 
-    // Check API key
-    await loadApiKey();
-    updateApiKeyStatus();
+    // Check API key (load in background so we don't freeze the app if network drops)
+    loadApiKey().then(() => updateApiKeyStatus());
 
     // Load receipts (this blocks if it's migrating large amounts of data)
     await loadReceipts();
