@@ -2144,8 +2144,41 @@ body::before {
     pointer-events: none;
 }
 
+/* ===== Facturas flotando en el login (decorativo, SVG + CSS) ===== */
+.invoice-float {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    overflow: hidden;
+}
+.invoice-float .inv {
+    position: absolute;
+    opacity: 0;
+    will-change: transform, opacity;
+    animation: invFloat linear infinite;
+}
+.invoice-float .inv svg {
+    display: block;
+    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.35));
+}
+@keyframes invFloat {
+    0%   { transform: translateY(16px) rotate(var(--r)); opacity: 0; }
+    14%  { opacity: var(--o); }
+    86%  { opacity: var(--o); }
+    100% { transform: translateY(-28px) rotate(calc(var(--r) * -1)); opacity: 0; }
+}
+/* En móvil la tarjeta ocupa casi todo el ancho: dejamos solo las de los bordes */
+@media (max-width: 560px) {
+    .invoice-float .inv:nth-child(n+5) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .invoice-float .inv { animation: none; opacity: var(--o); }
+}
+
 .lock-card {
     position: relative;
+    z-index: 3;
     background: var(--surface-glass);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);

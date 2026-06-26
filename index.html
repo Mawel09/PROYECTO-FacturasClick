@@ -9,11 +9,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
     <!-- ===== AUTH SCREEN ===== -->
     <div class="lock-screen" id="lock-screen">
+        <div class="invoice-float" id="invoice-float" aria-hidden="true"></div>
         <div class="lock-card">
             <div class="lock-logo">
                 <div class="lock-icon">
@@ -617,6 +618,51 @@
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- Facturas flotando en la pantalla de login (decorativo) -->
+    <script>
+    (function () {
+        var layer = document.getElementById('invoice-float');
+        if (!layer) return;
+        function invoice(scale) {
+            var w = Math.round(58 * scale), h = Math.round(74 * scale);
+            return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 58 74" aria-hidden="true">'
+                + '<rect x="2" y="2" width="46" height="70" rx="6" fill="rgba(19,45,70,.85)" stroke="currentColor" stroke-width="1.4"/>'
+                + '<path d="M48 2 L56 12 L48 12 Z" fill="currentColor" opacity=".5"/>'
+                + '<circle cx="13" cy="15" r="4" fill="currentColor" opacity=".85"/>'
+                + '<rect x="21" y="12" width="20" height="3" rx="1.5" fill="rgba(173,232,244,.55)"/>'
+                + '<rect x="21" y="18" width="13" height="3" rx="1.5" fill="rgba(173,232,244,.3)"/>'
+                + '<rect x="9" y="30" width="32" height="2.4" rx="1.2" fill="rgba(173,232,244,.28)"/>'
+                + '<rect x="9" y="37" width="32" height="2.4" rx="1.2" fill="rgba(173,232,244,.28)"/>'
+                + '<rect x="9" y="44" width="22" height="2.4" rx="1.2" fill="rgba(173,232,244,.28)"/>'
+                + '<text x="25" y="63" font-family="Outfit,sans-serif" font-size="13" font-weight="700" fill="currentColor" text-anchor="middle">€</text>'
+                + '</svg>';
+        }
+        var tints = ['#48cae4', '#00b4d8', '#2dd4a8', '#7ec8e3'];
+        var spots = [
+            { l: 7,  t: 18, s: 1.10, o: .60, r: '-10deg', d: 0,   dur: 14 },
+            { l: 78, t: 15, s: 1.00, o: .55, r: '12deg',  d: 1.5, dur: 15 },
+            { l: 85, t: 60, s: .85,  o: .50, r: '-7deg',  d: 5,   dur: 17 },
+            { l: 18, t: 64, s: .80,  o: .45, r: '8deg',   d: 3,   dur: 16 },
+            { l: 64, t: 80, s: .70,  o: .40, r: '5deg',   d: 2,   dur: 15 },
+            { l: 3,  t: 76, s: .70,  o: .38, r: '-5deg',  d: 6,   dur: 18 },
+            { l: 91, t: 34, s: .65,  o: .35, r: '9deg',   d: 4,   dur: 15 }
+        ];
+        spots.forEach(function (p, i) {
+            var el = document.createElement('span');
+            el.className = 'inv';
+            el.style.left = p.l + '%';
+            el.style.top = p.t + '%';
+            el.style.color = tints[i % tints.length];
+            el.style.setProperty('--o', p.o);
+            el.style.setProperty('--r', p.r);
+            el.style.animationDuration = p.dur + 's';
+            el.style.animationDelay = p.d + 's';
+            el.innerHTML = invoice(p.s);
+            layer.appendChild(el);
+        });
+    })();
+    </script>
 
     <!-- App Script (v38 to break cache) -->
     <script src="app.js?v=38"></script>
