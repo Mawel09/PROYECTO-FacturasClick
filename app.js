@@ -8,7 +8,7 @@ const STORAGE_KEY = 'thalassa_receipts_data';
 const API_KEY_STORAGE = 'thalassa_gemini_api_key';
 const PIN_HASH_STORAGE = 'thalassa_pin_hash';
 const SESSION_KEY = 'thalassa_session_active';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 // ── FIREBASE CONFIGURATION ─────────────────────────────────
 const firebaseConfig = {
@@ -1312,9 +1312,7 @@ function closeAllModals() {
 // ── SCAN FLOW ──────────────────────────────────────────────
 
 
-let scanQueue = [];
-let isProcessingQueue = false;
-let totalQueueCount = 0;
+
 let selectedFile = null;
 let selectedImageBase64 = null;
 
@@ -1368,84 +1366,49 @@ function compressImage(file, maxWidth = 800) {
     });
 }
 
-async function handleFileSelect(files) {
-    if (!files || files.length === 0) return;
+async function handleFileSelect(file) {
+    if (!file) return;
 
-    // Validate and add to queue
+    // Validate
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/heic'];
-    
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!validTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.heic')) {
-            showToast('Formato no soportado: ' + file.name, 'error');
-            continue;
-        }
-        if (file.size > 15 * 1024 * 1024) {
-            showToast('Imagen muy grande: ' + file.name, 'error');
-            continue;
-        }
-        scanQueue.push(file);
+    if (!validTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.heic')) {
+        showToast('Formato no soportado. Usa JPG, PNG, WEBP o HEIC.', 'error');
+        return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+        showToast('La imagen original es demasiado grande. Máximo 15MB.', 'error');
+        return;
     }
 
-    if (scanQueue.length > 0) {
-        showToast(`Añadidos ${scanQueue.length} tickets a la cola`, 'success');
-        
-        DOM.uploadPreview.style.display = 'none';
+    selectedFile = file;
+
+    // Preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        DOM.uploadPreview.src = e.target.result;
+        DOM.uploadPreview.style.display = 'block';
         DOM.btnProcessScan.disabled = false;
-        
-        if (!isProcessingQueue) {
-            totalQueueCount = scanQueue.length;
-            startProcessingQueue();
-        } else {
-            totalQueueCount += scanQueue.length;
-        }
-    }
+    };
+    reader.readAsDataURL(file);
 }
 
-async function startProcessingQueue() {
-    if (isProcessingQueue) return;
+async function processWithGemini() {
+    if (!selectedFile) return;
     
     const apiKey = getApiKey();
     if (!apiKey) {
         showToast('API Key no configurada', 'error');
         return;
     }
-    
-    isProcessingQueue = true;
-    processNextInQueue();
-}
 
-async function processNextInQueue() {
-    if (scanQueue.length === 0) {
-        isProcessingQueue = false;
-        totalQueueCount = 0;
-        closeModal(DOM.modalScan);
-        closeModal(DOM.modalReview);
-        return;
-    }
-
-    const currentFile = scanQueue.shift();
-    selectedFile = currentFile;
-    
-    const currentNum = totalQueueCount - scanQueue.length;
     DOM.scanUploadState.style.display = 'none';
     DOM.scanLoadingState.style.display = 'block';
-    DOM.scanLoadingState.querySelector('h3').textContent = `Analizando ticket ${currentNum} de ${totalQueueCount}...`;
-    
-    const queueIndicator = document.getElementById('queue-indicator');
-    if (queueIndicator) {
-        if (scanQueue.length > 0) {
-            queueIndicator.textContent = `(Quedan ${scanQueue.length})`;
-        } else {
-            queueIndicator.textContent = '';
-        }
-    }
+    DOM.btnProcessScan.disabled = true;
 
     try {
-        const compressedDataUrl = await compressImage(currentFile, 800);
+        const compressedDataUrl = await compressImage(selectedFile, 800);
         selectedImageBase64 = compressedDataUrl.split(',')[1];
 
-        const apiKey = getApiKey();
         const prompt = `Analiza esta imagen de un ticket/factura de compra y extrae la información en formato JSON estricto.
 
 IMPORTANTE: Responde ÚNICAMENTE con un JSON válido, sin markdown, sin backticks, sin texto adicional.
@@ -1484,7 +1447,7 @@ Reglas:
                         { text: prompt },
                         {
                             inlineData: {
-                                mimeType: currentFile.type,
+                                mimeType: selectedFile.type,
                                 data: selectedImageBase64
                             }
                         }
@@ -1530,9 +1493,6 @@ Reglas:
         const calcTotal = extractedData.products.reduce((s, p) => s + p.totalPrice, 0);
         if (Math.abs(calcTotal - extractedData.total) > 0.5) extractedData.total = calcTotal;
 
-        const skipBtn = document.getElementById('btn-skip-receipt');
-        if (skipBtn) skipBtn.style.display = (scanQueue.length > 0) ? 'inline-block' : 'none';
-
         closeModal(DOM.modalScan);
         openReviewModal();
         showToast(`${extractedData.products.length} productos extraídos`, 'success');
@@ -1540,7 +1500,10 @@ Reglas:
     } catch (error) {
         console.error('API Error:', error);
         showToast(`Error leyendo ticket: ${error.message}`, 'error');
-        setTimeout(processNextInQueue, 2000);
+        
+        DOM.scanUploadState.style.display = 'block';
+        DOM.scanLoadingState.style.display = 'none';
+        DOM.btnProcessScan.disabled = false;
     }
 }
 
@@ -1823,11 +1786,11 @@ function initEventListeners() {
 
     // File input
     DOM.receiptFileInput.addEventListener('change', (e) => {
-        if (e.target.files.length) handleFileSelect(e.target.files);
+        if (e.target.files[0]) handleFileSelect(e.target.files[0]);
     });
 
     // Process scan
-    DOM.btnProcessScan.addEventListener('click', startProcessingQueue);
+    DOM.btnProcessScan.addEventListener('click', processWithGemini);
 
     // Scan modal close
     document.getElementById('btn-close-scan').addEventListener('click', () => closeModal(DOM.modalScan));
