@@ -8,7 +8,7 @@ const STORAGE_KEY = 'thalassa_receipts_data';
 const API_KEY_STORAGE = 'thalassa_gemini_api_key';
 const PIN_HASH_STORAGE = 'thalassa_pin_hash';
 const SESSION_KEY = 'thalassa_session_active';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // ── FIREBASE CONFIGURATION ─────────────────────────────────
 const firebaseConfig = {
@@ -488,8 +488,9 @@ function renderDashboard() {
     const topStore = Object.entries(storeCounts).sort((a, b) => b[1] - a[1])[0];
     DOM.kpiTopStore.textContent = topStore ? topStore[0] : '—';
 
-    // API key banner
-    DOM.apiKeyBanner.classList.toggle('hidden', !!getApiKey());
+    // La IA se sirve desde el backend seguro; el cliente no configura su propia
+    // clave, así que el banner de "configura tu API Key" nunca debe mostrarse.
+    DOM.apiKeyBanner.classList.add('hidden');
 
     // Fiscal Summary Update
     if (typeof renderFiscalSummary === 'function') {
