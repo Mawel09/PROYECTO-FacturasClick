@@ -2020,7 +2020,11 @@ function initAuthUI() {
             await firebase.auth().signInWithEmailAndPassword(email, pass);
         } catch (error) {
             console.error('Error de login:', error);
-            errorLogin.textContent = 'Email o contraseña incorrectos.';
+            if (error.code === 'auth/invalid-credential') {
+                errorLogin.textContent = 'Email o contraseña incorrectos.';
+            } else {
+                errorLogin.textContent = 'Error: ' + error.message;
+            }
             btn.disabled = false;
             btn.innerHTML = 'Iniciar Sesión';
             shakeCard();
@@ -2052,8 +2056,10 @@ function initAuthUI() {
                 errorRegister.textContent = 'Este email ya está registrado.';
             } else if (error.code === 'auth/weak-password') {
                 errorRegister.textContent = 'La contraseña es muy débil.';
+            } else if (error.code === 'auth/operation-not-allowed') {
+                errorRegister.textContent = 'El registro con Email/Password no está habilitado en Firebase Console.';
             } else {
-                errorRegister.textContent = 'Error al crear la cuenta.';
+                errorRegister.textContent = 'Error: ' + error.message;
             }
             btn.disabled = false;
             btn.innerHTML = 'Registrarse';
