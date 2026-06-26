@@ -8,7 +8,7 @@ const STORAGE_KEY = 'thalassa_receipts_data';
 const API_KEY_STORAGE = 'thalassa_gemini_api_key';
 const PIN_HASH_STORAGE = 'thalassa_pin_hash';
 const SESSION_KEY = 'thalassa_session_active';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
 
 // ── FIREBASE CONFIGURATION ─────────────────────────────────
 const firebaseConfig = {
