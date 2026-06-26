@@ -5,8 +5,7 @@
     { "src": "api/admin-usage.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "app.js", "use": "@vercel/static" },
-    { "src": "style.css", "use": "@vercel/static" },
-    { "src": "assets/**", "use": "@vercel/static" }
+    { "src": "style.css", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/scan", "dest": "/api/scan.js" },
