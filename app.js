@@ -1772,13 +1772,13 @@ async function exportToPDFFiscal() {
 
         // Tabla resumen
         const summaryData = receipts.map(r => [
-            formatDate(r.date),
+            formatDateStr(r.date),
             r.store,
-            formatCurrency(r.total)
+            currency.format(r.total)
         ]);
 
         const grandTotal = receipts.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
-        summaryData.push(['', 'TOTAL GENERAL', formatCurrency(grandTotal)]);
+        summaryData.push(['', 'TOTAL GENERAL', currency.format(grandTotal)]);
 
         doc.autoTable({
             startY: 40,
@@ -1821,15 +1821,15 @@ async function exportToPDFFiscal() {
             doc.setFontSize(16);
             doc.text(`Factura: ${r.store}`, 14, 20);
             doc.setFontSize(10);
-            doc.text(`Fecha: ${formatDate(r.date)} | Total: ${formatCurrency(r.total)}`, 14, 28);
+            doc.text(`Fecha: ${formatDateStr(r.date)} | Total: ${currency.format(r.total)}`, 14, 28);
             doc.text(`ID Sistema: ${r.id}`, 14, 34);
 
             // Tabla de productos
-            const productData = r.items.map(item => [
-                item.description,
-                item.quantity,
-                formatCurrency(item.price),
-                formatCurrency(item.total)
+            const productData = (r.products || []).map(p => [
+                p.name,
+                p.qty,
+                currency.format(p.unitPrice),
+                currency.format(p.totalPrice)
             ]);
 
             doc.autoTable({
@@ -1840,9 +1840,11 @@ async function exportToPDFFiscal() {
                 headStyles: { fillColor: [52, 152, 219] }
             });
 
-            // Incrustar imagen si existe
-            if (r.hasImage && r.imageUrl) {
-                const base64Img = await getBase64Image(r.imageUrl);
+            // Incrustar imagen si existe. imageUrl puede no estar en el objeto si la
+            // subida en segundo plano no había terminado; lo recuperamos de Storage por id.
+            if (r.hasImage) {
+                const imageUrl = r.imageUrl || await getReceiptImage(r.id);
+                const base64Img = imageUrl ? await getBase64Image(imageUrl) : null;
                 if (base64Img) {
                     let finalY = doc.lastAutoTable.finalY || 40;
                     
