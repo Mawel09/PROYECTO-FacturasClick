@@ -1311,6 +1311,7 @@ function closeAllModals() {
 
 // ── SCAN FLOW ──────────────────────────────────────────────
 
+
 let scanQueue = [];
 let isProcessingQueue = false;
 let totalQueueCount = 0;
@@ -1389,7 +1390,6 @@ async function handleFileSelect(files) {
     if (scanQueue.length > 0) {
         showToast(`Añadidos ${scanQueue.length} tickets a la cola`, 'success');
         
-        // Hide dropzone content and show generic processing state
         DOM.uploadPreview.style.display = 'none';
         DOM.btnProcessScan.disabled = false;
         
@@ -1427,7 +1427,6 @@ async function processNextInQueue() {
     const currentFile = scanQueue.shift();
     selectedFile = currentFile;
     
-    // Update UI indicators
     const currentNum = totalQueueCount - scanQueue.length;
     DOM.scanUploadState.style.display = 'none';
     DOM.scanLoadingState.style.display = 'block';
@@ -1443,7 +1442,6 @@ async function processNextInQueue() {
     }
 
     try {
-        // Compress
         const compressedDataUrl = await compressImage(currentFile, 800);
         selectedImageBase64 = compressedDataUrl.split(',')[1];
 
@@ -1532,13 +1530,8 @@ Reglas:
         const calcTotal = extractedData.products.reduce((s, p) => s + p.totalPrice, 0);
         if (Math.abs(calcTotal - extractedData.total) > 0.5) extractedData.total = calcTotal;
 
-        // Configure Review modal for Queue mode
         const skipBtn = document.getElementById('btn-skip-receipt');
-        if (scanQueue.length > 0) {
-            skipBtn.style.display = 'inline-block';
-        } else {
-            skipBtn.style.display = 'none';
-        }
+        if (skipBtn) skipBtn.style.display = (scanQueue.length > 0) ? 'inline-block' : 'none';
 
         closeModal(DOM.modalScan);
         openReviewModal();
@@ -1547,218 +1540,7 @@ Reglas:
     } catch (error) {
         console.error('API Error:', error);
         showToast(`Error leyendo ticket: ${error.message}`, 'error');
-        // Automatically proceed to next if failed? Or let user handle?
-        // Let's proceed to next
         setTimeout(processNextInQueue, 2000);
-    }
-}
-
-// ── END OF SCANNING ────────────────────────────────────────
-
-function openScanModal() {
-    const key = getApiKey();
-    if (!key) {
-        showToast('Configura tu API Key de Gemini antes de escanear', 'warning');
-        navigateTo('settings');
-        return;
-    }
-    // Reset state
-    selectedFile = null;
-    selectedImageBase64 = null;
-    DOM.uploadPreview.style.display = 'none';
-    DOM.uploadPreview.src = '';
-    DOM.btnProcessScan.disabled = true;
-    DOM.scanUploadState.style.display = 'block';
-    DOM.scanLoadingState.style.display = 'none';
-    DOM.receiptFileInput.value = '';
-
-    openModal(DOM.modalScan);
-}
-
-function compressImage(file, maxWidth = 800) {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                let width = img.width;
-                let height = img.height;
-
-                if (width > maxWidth) {
-                    height = Math.round((height * maxWidth) / width);
-                    width = maxWidth;
-                }
-
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                // Compress to JPEG at 0.7 quality to ensure small payload
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                resolve(compressedDataUrl);
-            };
-        };
-    });
-}
-
-async function handleFileSelect(e.dataTransfer.files) {
-    if (!file) return;
-
-    // Validate
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/heic'];
-    if (!validTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.heic')) {
-        showToast('Formato no soportado. Usa JPG, PNG, WEBP o HEIC.', 'error');
-        return;
-    }
-    if (file.size > 15 * 1024 * 1024) {
-        showToast('La imagen original es demasiado grande. Máximo 15MB.', 'error');
-        return;
-    }
-
-    selectedFile = file;
-    DOM.btnProcessScan.disabled = true;
-
-    try {
-        // Compress image to avoid Gemini API Quota Exceeded / Payload too large
-        const compressedDataUrl = await compressImage(file, 800);
-        
-        DOM.uploadPreview.src = compressedDataUrl;
-        DOM.uploadPreview.style.display = 'block';
-
-        // Extract base64 for API
-        selectedImageBase64 = compressedDataUrl.split(',')[1];
-        DOM.btnProcessScan.disabled = false;
-    } catch(err) {
-        console.error('Error compressing image:', err);
-        showToast('Error procesando la imagen de la cámara', 'error');
-    }
-}
-
-async function processWithGemini() {
-    if (!selectedImageBase64) return;
-
-    const apiKey = getApiKey();
-    if (!apiKey) {
-        showToast('API Key no configurada', 'error');
-        return;
-    }
-
-    // Show loading
-    DOM.scanUploadState.style.display = 'none';
-    DOM.scanLoadingState.style.display = 'block';
-
-    const prompt = `Analiza esta imagen de un ticket/factura de compra y extrae la información en formato JSON estricto.
-
-IMPORTANTE: Responde ÚNICAMENTE con un JSON válido, sin markdown, sin backticks, sin texto adicional.
-
-El JSON debe tener esta estructura exacta:
-{
-  "store": "nombre del comercio",
-  "date": "YYYY-MM-DD",
-  "products": [
-    {
-      "name": "nombre del producto",
-      "qty": 1,
-      "unitPrice": 0.00,
-      "totalPrice": 0.00
-    }
-  ],
-  "total": 0.00
-}
-
-Reglas:
-- Si no puedes leer el nombre del comercio, pon "Desconocido"
-- Si no puedes leer la fecha, usa la fecha de hoy: ${new Date().toISOString().split('T')[0]}
-- Los precios deben ser números con 2 decimales
-- qty debe ser un entero (mínimo 1)
-- totalPrice = qty * unitPrice
-- total es la suma de todos los totalPrice
-- Extrae TODOS los productos visibles en el ticket
-- El nombre del producto debe ser descriptivo y en español si es posible`;
-
-    try {
-        const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        {
-                            inlineData: {
-                                mimeType: selectedFile.type,
-                                data: selectedImageBase64
-                            }
-                        }
-                    ]
-                }],
-                generationConfig: {
-                    temperature: 0.1,
-                    maxOutputTokens: 4096,
-                    responseMimeType: "application/json"
-                }
-            })
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            const errMsg = errData?.error?.message || `Error ${response.status}`;
-            throw new Error(errMsg);
-        }
-
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-        // Parse JSON from response (handle possible markdown wrapping)
-        let jsonStr = text.trim();
-        // Remove markdown code fences if present
-        jsonStr = jsonStr.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-        
-        // Remove any trailing commas that might break JSON.parse
-        jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
-
-        const parsed = JSON.parse(jsonStr);
-
-        // Validate minimum structure
-        if (!parsed.products || !Array.isArray(parsed.products)) {
-            throw new Error('La IA no devolvió una lista de productos válida');
-        }
-
-        // Normalize data
-        extractedData = {
-            store: parsed.store || 'Desconocido',
-            date: parsed.date || new Date().toISOString().split('T')[0],
-            products: parsed.products.map(p => ({
-                name: String(p.name || 'Producto').trim(),
-                qty: Math.max(1, Math.round(Number(p.qty) || 1)),
-                unitPrice: Math.max(0, Number(p.unitPrice) || 0),
-                totalPrice: Math.max(0, Number(p.totalPrice) || 0)
-            })),
-            total: Number(parsed.total) || 0,
-            notes: ''
-        };
-
-        // Recalculate total if needed
-        const calcTotal = extractedData.products.reduce((s, p) => s + p.totalPrice, 0);
-        if (Math.abs(calcTotal - extractedData.total) > 0.5) {
-            extractedData.total = calcTotal;
-        }
-
-        // Close scan modal, open review
-        closeModal(DOM.modalScan);
-        openReviewModal();
-
-        showToast(`${extractedData.products.length} productos extraídos de "${extractedData.store}"`, 'success');
-
-    } catch (error) {
-        console.error('Gemini API error:', error);
-        DOM.scanUploadState.style.display = 'block';
-        DOM.scanLoadingState.style.display = 'none';
-        showToast(`Error: ${error.message}`, 'error');
     }
 }
 
@@ -1902,19 +1684,10 @@ async function saveReviewedReceipt() {
     // Save to Firebase (this will trigger onSnapshot to update UI)
     await db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized);
 
-
+    closeModal(DOM.modalReview);
     extractedData = null;
     selectedImageBase64 = null;
     selectedFile = null;
-
-    if (scanQueue.length > 0) {
-        closeModal(DOM.modalReview);
-        processNextInQueue();
-    } else {
-        closeModal(DOM.modalReview);
-        isProcessingQueue = false;
-        totalQueueCount = 0;
-    }
 
     showToast(`Factura de "${receipt.store}" guardada con ${receipt.products.length} productos`, 'success');
 }
@@ -2064,16 +1837,20 @@ function initEventListeners() {
     document.getElementById('btn-close-review').addEventListener('click', () => closeModal(DOM.modalReview));
     document.getElementById('btn-cancel-review').addEventListener('click', () => {
         closeModal(DOM.modalReview);
-        scanQueue = []; // Vaciar cola al cancelar
+        scanQueue = [];
         isProcessingQueue = false;
     });
-    document.getElementById('btn-skip-receipt').addEventListener('click', () => {
-        closeModal(DOM.modalReview);
-        extractedData = null;
-        selectedImageBase64 = null;
-        selectedFile = null;
-        processNextInQueue();
-    });
+    
+    const btnSkip = document.getElementById('btn-skip-receipt');
+    if(btnSkip) {
+        btnSkip.addEventListener('click', () => {
+            closeModal(DOM.modalReview);
+            extractedData = null;
+            selectedImageBase64 = null;
+            selectedFile = null;
+            processNextInQueue();
+        });
+    }
     DOM.btnAddProductRow.addEventListener('click', addProductRow);
     DOM.btnSaveReceipt.addEventListener('click', saveReviewedReceipt);
 
@@ -2189,7 +1966,6 @@ firebase.auth().onAuthStateChanged(async user => {
     if (user) {
         // Usuario logueado
         currentUserUid = user.uid;
-        await loadApiKey();
         unlockApp();
         document.getElementById('btn-logout').addEventListener('click', () => {
             firebase.auth().signOut().then(() => {

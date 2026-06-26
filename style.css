@@ -387,7 +387,8 @@ body::before {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: linear-gradient(135deg, var(--ocean-deep), var(--marine-blue));
+    background: url('assets/bg-auth.png') center/cover no-repeat, linear-gradient(135deg, var(--ocean-deep), var(--marine-blue));
+    background-blend-mode: overlay;
     z-index: 9999;
     display: flex;
     justify-content: center;
