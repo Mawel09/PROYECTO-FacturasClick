@@ -1438,36 +1438,69 @@ Reglas:
 - Extrae TODOS los productos visibles en el ticket
 - El nombre del producto debe ser descriptivo y en español si es posible`;
 
-        const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        {
-                            inlineData: {
-                                mimeType: selectedFile.type,
-                                data: selectedImageBase64
-                            }
-                        }
-                    ]
-                }],
-                generationConfig: {
+        let text = '';
+        if (apiKey.startsWith('sk-')) {
+            // Usa OpenAI (gpt-4o-mini)
+            const oaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: prompt + '\n\nIMPORTANTE: El JSON debe ser devuelto de forma estricta, sin ningún markdown extra.' },
+                            { type: 'image_url', image_url: { url: `data:${selectedFile.type};base64,${selectedImageBase64}` } }
+                        ]
+                    }],
                     temperature: 0.1,
-                    maxOutputTokens: 4096,
-                    responseMimeType: "application/json"
-                }
-            })
-        });
+                    response_format: { type: "json_object" }
+                })
+            });
 
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData?.error?.message || `Error ${response.status}`);
+            if (!oaiResponse.ok) {
+                const errData = await oaiResponse.json().catch(() => ({}));
+                throw new Error(errData?.error?.message || `Error OpenAI ${oaiResponse.status}`);
+            }
+
+            const data = await oaiResponse.json();
+            text = data.choices?.[0]?.message?.content || '';
+        } else {
+            // Usa Gemini
+            const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: prompt },
+                            {
+                                inlineData: {
+                                    mimeType: selectedFile.type,
+                                    data: selectedImageBase64
+                                }
+                            }
+                        ]
+                    }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        maxOutputTokens: 4096,
+                        responseMimeType: "application/json"
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData?.error?.message || `Error Gemini ${response.status}`);
+            }
+
+            const data = await response.json();
+            text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         }
-
-        const data = await response.json();
-        let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         let jsonStr = text.replace(/^```(?:json)?s*/i, '').replace(/```s*$/i, '').trim();
         jsonStr = jsonStr.replace(/,s*([]}])/g, '$1');
 
