@@ -1678,14 +1678,30 @@ async function saveReviewedReceipt() {
         // Sanitize before saving
         const sanitized = sanitizeReceipt(receipt);
         
+        // Timeout Helper
+        const withTimeout = (promise, ms, name) => {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout en: ' + name)), ms))
+            ]);
+        };
+
         // Save image separately and get URL
         if (selectedImageBase64) {
-            const url = await saveReceiptImage(receiptId, selectedImageBase64);
-            if (url) sanitized.imageUrl = url;
+            try {
+                const url = await withTimeout(saveReceiptImage(receiptId, selectedImageBase64), 8000, 'Subir Imagen');
+                if (url) sanitized.imageUrl = url;
+            } catch (e) {
+                console.warn('Error subiendo imagen, guardando factura sin imagen:', e);
+            }
         }
 
         // Save to Firebase (this will trigger onSnapshot to update UI)
-        await db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized);
+        await withTimeout(
+            db.collection('users').doc(currentUserUid).collection('receipts').doc(sanitized.id).set(sanitized),
+            8000,
+            'Guardar en base de datos'
+        );
 
         closeModal(DOM.modalReview);
         extractedData = null;
