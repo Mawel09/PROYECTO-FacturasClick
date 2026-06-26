@@ -387,7 +387,7 @@ body::before {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-image: linear-gradient(rgba(10, 25, 47, 0.75), rgba(0, 102, 204, 0.65)), url('assets/bg-auth.png');
+    background-image: linear-gradient(rgba(10, 25, 47, 0.1), rgba(0, 102, 204, 0.1)), url('assets/bg-auth.png');
     background-position: center;
     background-size: cover;
     background-repeat: no-repeat;
