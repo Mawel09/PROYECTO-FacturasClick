@@ -2,6 +2,7 @@
   "version": 2,
   "builds": [
     { "src": "api/scan.js", "use": "@vercel/node" },
+    { "src": "api/admin-usage.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "app.js", "use": "@vercel/static" },
     { "src": "style.css", "use": "@vercel/static" },
@@ -9,6 +10,7 @@
   ],
   "routes": [
     { "src": "/api/scan", "dest": "/api/scan.js" },
+    { "src": "/api/admin-usage", "dest": "/api/admin-usage.js" },
     { "src": "/", "dest": "/index.html" },
     { "handle": "filesystem" }
   ]

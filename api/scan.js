@@ -55,9 +55,11 @@ module.exports = async (req, res) => {
   }
 
   let uid;
+  let userEmail = null;
   try {
     const decoded = await admin.auth().verifyIdToken(token);
     uid = decoded.uid;
+    userEmail = decoded.email || null; // para el panel de administración
   } catch (e) {
     return res.status(401).json({ error: 'Sesión inválida o caducada' });
   }
@@ -88,7 +90,12 @@ module.exports = async (req, res) => {
         const snap = await tx.get(usageRef);
         if (snap.exists && snap.data().month === currentMonth) {
           const count = snap.data().count || 0;
-          tx.set(usageRef, { month: currentMonth, count: Math.max(0, count - 1) });
+          const allTime = snap.data().allTime || 0;
+          tx.set(usageRef, {
+            month: currentMonth,
+            count: Math.max(0, count - 1),
+            allTime: Math.max(0, allTime - 1),
+          }, { merge: true });
         }
       });
     } catch (_) {
@@ -106,7 +113,14 @@ module.exports = async (req, res) => {
       if (count >= MONTHLY_LIMIT) {
         return { allowed: false, count };
       }
-      tx.set(usageRef, { month: currentMonth, count: count + 1 });
+      const prevAllTime = snap.exists ? (snap.data().allTime || 0) : 0;
+      tx.set(usageRef, {
+        month: currentMonth,
+        count: count + 1,
+        email: userEmail,            // para identificar al cliente en el panel admin
+        allTime: prevAllTime + 1,    // total histórico de escaneos
+        lastScanAt: new Date().toISOString(),
+      }, { merge: true });
       return { allowed: true, count: count + 1 };
     });
 

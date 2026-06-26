@@ -2272,6 +2272,90 @@ body::before {
     }
 }
 
+/* === PANEL DE ADMINISTRACIÓN === */
+.admin-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+}
+.admin-stat-card {
+    background: var(--surface-glass);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.admin-stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.admin-stat-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.admin-table-wrap {
+    overflow-x: auto;
+    background: var(--surface-glass);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+}
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.admin-table th,
+.admin-table td {
+    padding: 12px 16px;
+    text-align: left;
+}
+.admin-table thead th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-light);
+}
+.admin-table tbody tr {
+    border-bottom: 1px solid rgba(173, 232, 244, 0.08);
+}
+.admin-table tbody tr:last-child {
+    border-bottom: none;
+}
+.admin-table td {
+    color: var(--text-primary);
+}
+.admin-usage-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 120px;
+}
+.admin-bar {
+    height: 6px;
+    background: rgba(173, 232, 244, 0.12);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.admin-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--sky-vivid), var(--sky-accent));
+    border-radius: 999px;
+}
+.admin-bar-fill.danger {
+    background: linear-gradient(90deg, var(--coral-warm), var(--coral-soft));
+}
+.admin-count-danger {
+    color: var(--coral-warm);
+    font-weight: 700;
+}
+
 /* === FISCAL MODULE === */
 .fiscal-alert {
     background: linear-gradient(135deg, rgba(255, 126, 103, 0.1), rgba(255, 126, 103, 0.02));

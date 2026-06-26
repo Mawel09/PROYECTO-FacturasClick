@@ -10,6 +10,7 @@ const PIN_HASH_STORAGE = 'thalassa_pin_hash';
 const SESSION_KEY = 'thalassa_session_active';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const MONTHLY_SCAN_LIMIT = 30; // facturas por usuario y mes (debe coincidir con el backend)
+const COST_PER_SCAN_EUR = 0.005; // coste estimado por escaneo (Gemini 2.5 Flash) para el panel admin
 
 // ── FIREBASE CONFIGURATION ─────────────────────────────────
 const firebaseConfig = {
@@ -325,6 +326,9 @@ async function loadReceipts() {
         // Escuchar el contador de uso mensual en tiempo real
         listenUsage();
 
+        // Revelar el panel de administración si el usuario es admin
+        checkAdminAccess();
+
     } catch (e) {
         console.error('Error loading receipts from Firebase:', e);
         showToast('Error de conexión con la base de datos', 'error');
@@ -366,6 +370,79 @@ function updateUsageUI() {
         DOM.scanUsageInfo.innerHTML = `Has usado <strong>${monthlyUsage}</strong> de <strong>${MONTHLY_SCAN_LIMIT}</strong> facturas este mes (${remaining} restantes).`;
         DOM.scanUsageInfo.style.color = 'var(--text-secondary)';
     }
+}
+
+// ── ADMIN: PANEL DE USO POR CLIENTE ────────────────────────
+// Pide al backend el uso de TODOS los clientes. El servidor verifica que el
+// email del usuario es de administrador (ADMIN_EMAIL); si no, devuelve 403.
+async function loadAdminUsage() {
+    const user = firebase.auth().currentUser;
+    if (!user) return false;
+    try {
+        const token = await user.getIdToken();
+        const resp = await fetch('/api/admin-usage', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) return false; // 403 para usuarios normales
+        const data = await resp.json();
+        renderAdminTable(data);
+        return true;
+    } catch (e) {
+        console.warn('No se pudo cargar el panel de admin:', e.message);
+        return false;
+    }
+}
+
+// Revela el menú "Admin" solo si el usuario actual tiene acceso de administrador.
+async function checkAdminAccess() {
+    const ok = await loadAdminUsage();
+    const navAdmin = document.getElementById('nav-admin');
+    if (navAdmin) navAdmin.style.display = ok ? '' : 'none';
+}
+
+function renderAdminTable(data) {
+    const stats = document.getElementById('admin-stats');
+    const tbody = document.getElementById('admin-tbody');
+    if (!stats || !tbody) return;
+
+    const clients = data.clients || [];
+    const limit = data.limit || MONTHLY_SCAN_LIMIT;
+    const totalMonth = clients.reduce((s, c) => s + (c.monthCount || 0), 0);
+    const atLimit = clients.filter(c => (c.monthCount || 0) >= limit).length;
+    const estCost = totalMonth * COST_PER_SCAN_EUR;
+
+    stats.innerHTML = `
+        <div class="admin-stat-card"><span class="admin-stat-label">Clientes</span><span class="admin-stat-value">${clients.length}</span></div>
+        <div class="admin-stat-card"><span class="admin-stat-label">Facturas este mes</span><span class="admin-stat-value">${totalMonth}</span></div>
+        <div class="admin-stat-card"><span class="admin-stat-label">En el límite</span><span class="admin-stat-value">${atLimit}</span></div>
+        <div class="admin-stat-card"><span class="admin-stat-label">Coste estimado</span><span class="admin-stat-value">~${currency.format(estCost)}</span></div>
+    `;
+
+    if (clients.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-secondary);">Aún no hay actividad de clientes este mes.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = clients.map(c => {
+        const count = c.monthCount || 0;
+        const pct = Math.min(100, Math.round((count / limit) * 100));
+        const danger = count >= limit;
+        const last = c.lastScanAt
+            ? new Date(c.lastScanAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+            : '—';
+        return `
+        <tr>
+            <td>${escapeHtml(c.email || '—')}</td>
+            <td>
+                <div class="admin-usage-cell">
+                    <span class="${danger ? 'admin-count-danger' : ''}">${count} / ${limit}</span>
+                    <div class="admin-bar"><div class="admin-bar-fill${danger ? ' danger' : ''}" style="width:${pct}%;"></div></div>
+                </div>
+            </td>
+            <td>${c.allTime || 0}</td>
+            <td>${last}</td>
+        </tr>`;
+    }).join('');
 }
 
 let currentApiKey = '';
@@ -469,6 +546,9 @@ function navigateTo(sectionId) {
             break;
         case 'settings':
             renderSettings();
+            break;
+        case 'admin':
+            loadAdminUsage();
             break;
     }
 }
@@ -2069,6 +2149,9 @@ function initEventListeners() {
     DOM.navItems.forEach(item => {
         item.addEventListener('click', () => navigateTo(item.dataset.section));
     });
+
+    const btnAdminRefresh = document.getElementById('btn-admin-refresh');
+    if (btnAdminRefresh) btnAdminRefresh.addEventListener('click', loadAdminUsage);
 
     // Mobile
     DOM.mobileBurger.addEventListener('click', () => {
