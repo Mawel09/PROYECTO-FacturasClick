@@ -41,6 +41,8 @@ let productCategories = {}; // { "product name": "peluqueria" | "estetica" | "ge
 let currentEditId = null; // for detail modal delete
 let extractedData = null; // temp data from AI scan
 let monthlyUsage = 0; // facturas escaneadas este mes (límite mensual)
+let currentAccountType = 'empresa'; // 'empresa' | 'gestoria' (elegido al registrarse)
+let pendingRegisterType = null;     // tipo elegido en el registro, pendiente de guardar
 
 // Currency formatter
 const currency = new Intl.NumberFormat('es-ES', {
@@ -498,6 +500,49 @@ async function loadApiKey() {
     } catch (e) {
         console.warn('Network timeout o error cargando API Key, usando caché local si existe');
     }
+}
+
+// ── PERFIL / TIPO DE CUENTA ────────────────────────────────
+
+// Carga el tipo de cuenta del usuario (empresa/gestoría). Cuentas antiguas sin
+// perfil se tratan como "empresa" (compatibilidad hacia atrás).
+async function loadProfile() {
+    if (!currentUserUid) return;
+    try {
+        const doc = await readWithTimeout(db.collection('users').doc(currentUserUid).collection('settings').doc('profile').get());
+        currentAccountType = (doc.exists && doc.data().accountType === 'gestoria') ? 'gestoria' : 'empresa';
+    } catch (e) {
+        console.warn('No se pudo cargar el perfil; usando "empresa" por defecto');
+        currentAccountType = 'empresa';
+    }
+    applyAccountType();
+}
+
+// Cambia el tipo de cuenta (desde Ajustes) y lo persiste.
+async function setAccountType(type) {
+    currentAccountType = (type === 'gestoria') ? 'gestoria' : 'empresa';
+    applyAccountType();
+    if (!currentUserUid) return;
+    try {
+        await db.collection('users').doc(currentUserUid).collection('settings').doc('profile')
+            .set({ accountType: currentAccountType }, { merge: true });
+        showToast(currentAccountType === 'gestoria' ? 'Cuenta configurada como Gestoría' : 'Cuenta configurada como Empresa', 'success');
+    } catch (e) {
+        console.error('Error guardando tipo de cuenta:', e);
+        showToast('No se pudo guardar el tipo de cuenta', 'error');
+    }
+}
+
+// Refleja el tipo de cuenta en la interfaz (badge + atributo para futuras secciones de gestoría).
+function applyAccountType() {
+    document.body.setAttribute('data-account-type', currentAccountType);
+    const badge = document.getElementById('account-type-badge');
+    if (badge) {
+        badge.textContent = currentAccountType === 'gestoria' ? 'Gestoría' : 'Empresa';
+        badge.className = 'account-badge ' + currentAccountType;
+    }
+    const sel = document.getElementById('settings-account-type');
+    if (sel) sel.value = currentAccountType;
 }
 
 // ── TOASTS ─────────────────────────────────────────────────
@@ -2166,6 +2211,9 @@ function initEventListeners() {
     const btnAdminRefresh = document.getElementById('btn-admin-refresh');
     if (btnAdminRefresh) btnAdminRefresh.addEventListener('click', loadAdminUsage);
 
+    const accTypeSel = document.getElementById('settings-account-type');
+    if (accTypeSel) accTypeSel.addEventListener('change', (e) => setAccountType(e.target.value));
+
     // Mobile
     DOM.mobileBurger.addEventListener('click', () => {
         DOM.sidebar.classList.toggle('open');
@@ -2317,6 +2365,9 @@ async function init() {
     // Attach event listeners before loading data so UI doesn't freeze
     initEventListeners();
 
+    // Cargar el tipo de cuenta (empresa/gestoría) para adaptar la interfaz
+    await loadProfile();
+
     // Check API key (load in background so we don't freeze the app if network drops)
     loadApiKey().then(() => updateApiKeyStatus());
 
@@ -2346,6 +2397,17 @@ firebase.auth().onAuthStateChanged(async user => {
     if (user) {
         // Usuario logueado
         currentUserUid = user.uid;
+        // Si viene de un registro nuevo, guardamos el tipo de cuenta elegido ANTES de arrancar.
+        if (pendingRegisterType) {
+            try {
+                await db.collection('users').doc(user.uid).collection('settings').doc('profile')
+                    .set({ accountType: pendingRegisterType, createdAt: new Date().toISOString() }, { merge: true });
+                currentAccountType = pendingRegisterType;
+            } catch (e) {
+                console.warn('No se pudo guardar el tipo de cuenta:', e.message);
+            }
+            pendingRegisterType = null;
+        }
         unlockApp();
         document.getElementById('btn-logout').addEventListener('click', () => {
             firebase.auth().signOut().then(() => {
@@ -2389,6 +2451,7 @@ function initAuthUI() {
     // Iniciar Sesión
     formLogin.addEventListener('submit', async (e) => {
         e.preventDefault();
+        pendingRegisterType = null; // un login normal nunca cambia el tipo de cuenta
         const email = document.getElementById('login-email').value;
         const pass = document.getElementById('login-password').value;
         const btn = document.getElementById('btn-login-submit');
@@ -2428,10 +2491,13 @@ function initAuthUI() {
             btn.disabled = true;
             btn.innerHTML = 'Creando cuenta...';
             errorRegister.textContent = '';
+            const typeEl = document.querySelector('input[name="account-type"]:checked');
+            pendingRegisterType = (typeEl && typeEl.value === 'gestoria') ? 'gestoria' : 'empresa';
             await firebase.auth().createUserWithEmailAndPassword(email, pass);
             // El onAuthStateChanged detectará el nuevo usuario y llamará a init() y a la migración
         } catch (error) {
             console.error('Error de registro:', error);
+            pendingRegisterType = null; // el registro falló: no arrastrar el tipo a un login posterior
             if (error.code === 'auth/email-already-in-use') {
                 errorRegister.textContent = 'Este email ya está registrado.';
             } else if (error.code === 'auth/weak-password') {

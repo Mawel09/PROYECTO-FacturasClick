@@ -2458,3 +2458,35 @@ body::before {
         border-top: 2px solid var(--border-light);
     }
 }
+
+/* ===== Tipo de cuenta: selector de registro, badge y select de ajustes ===== */
+.acct-choice { display: flex; gap: 10px; margin-bottom: 16px; }
+.acct-opt {
+    flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center;
+    gap: 2px; padding: 12px 8px; border-radius: 14px; cursor: pointer;
+    background: rgba(10, 22, 40, 0.5);
+    border: 1px solid var(--border-light);
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+.acct-opt input { position: absolute; opacity: 0; width: 0; height: 0; }
+.acct-opt .acct-ic { font-size: 22px; }
+.acct-opt .acct-nm { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.acct-opt .acct-ds { font-size: 10.5px; color: var(--text-secondary); line-height: 1.2; }
+.acct-choice .acct-opt:has(input:checked) {
+    border-color: var(--sky-accent);
+    background: rgba(72, 202, 228, 0.12);
+}
+
+.account-badge {
+    display: inline-block; margin: 8px 0 0 4px; font-size: 10px; font-weight: 700;
+    padding: 3px 9px; border-radius: 20px; letter-spacing: 0.3px;
+}
+.account-badge.empresa { background: rgba(72, 202, 228, 0.15); color: var(--sky-accent); }
+.account-badge.gestoria { background: rgba(45, 212, 168, 0.16); color: var(--seaweed-green); }
+
+.acct-select {
+    width: 100%; padding: 11px 12px; border-radius: 10px; font-size: 13px; cursor: pointer;
+    background: rgba(10, 22, 40, 0.55); color: var(--text-primary);
+    border: 1px solid var(--border-light);
+}
+.acct-select option { background: #0d2137; color: var(--text-primary); }

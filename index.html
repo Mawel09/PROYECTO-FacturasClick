@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20">
+    <link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
     <!-- ===== AUTH SCREEN ===== -->
@@ -50,6 +50,20 @@
             <!-- Register Form -->
             <form id="auth-register-form" style="display:none;" autocomplete="on">
                 <p class="lock-info">Crea tu cuenta segura para guardar facturas en la nube.</p>
+                <div class="acct-choice" id="acct-choice">
+                    <label class="acct-opt">
+                        <input type="radio" name="account-type" value="empresa" checked>
+                        <span class="acct-ic">🏢</span>
+                        <span class="acct-nm">Empresa</span>
+                        <span class="acct-ds">Mis propias facturas</span>
+                    </label>
+                    <label class="acct-opt">
+                        <input type="radio" name="account-type" value="gestoria">
+                        <span class="acct-ic">🧾</span>
+                        <span class="acct-nm">Gestoría</span>
+                        <span class="acct-ds">Facturas de varios clientes</span>
+                    </label>
+                </div>
                 <div class="form-group">
                     <label for="register-email">Email</label>
                     <input type="email" id="register-email" placeholder="tu@email.com" required autocomplete="email">
@@ -90,6 +104,7 @@
                         <p>Gestor Inteligente de Facturas</p>
                     </div>
                 </a>
+                <span class="account-badge empresa" id="account-type-badge">Empresa</span>
             </div>
 
             <nav class="sidebar-nav">
@@ -403,6 +418,20 @@
                 </div>
 
                 <div class="settings-grid">
+                    <div class="settings-group">
+                        <h3>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path><line x1="9" y1="9" x2="9" y2="9"></line><line x1="9" y1="13" x2="9" y2="13"></line></svg>
+                            Tipo de cuenta
+                        </h3>
+                        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+                            Elige cómo usas ThalassaFacturas. La Gestoría te permite gestionar varios clientes.
+                        </p>
+                        <select id="settings-account-type" class="acct-select">
+                            <option value="empresa">🏢 Empresa — mis propias facturas</option>
+                            <option value="gestoria">🧾 Gestoría — facturas de varios clientes</option>
+                        </select>
+                    </div>
+
                     <!-- Tarjeta de API Key del cliente oculta: la IA se sirve desde el
                          backend seguro (/api/scan). Se mantiene en el DOM para no romper
                          las referencias JS, pero no se muestra al usuario. -->
@@ -700,6 +729,6 @@
     </script>
 
     <!-- App Script (v39 to break cache) -->
-    <script src="app.js?v=41"></script>
+    <script src="app.js?v=42"></script>
 </body>
 </html>
