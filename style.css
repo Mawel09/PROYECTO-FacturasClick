@@ -2523,3 +2523,25 @@ body::before {
     border: 1px solid var(--border-light); font-family: var(--font-family);
 }
 #modal-client input:focus { outline: none; border-color: var(--sky-accent); background: var(--surface-input-focus); }
+
+/* ===== Selector de cliente (filtro global, barra lateral) ===== */
+.client-filter-wrap { margin-top: 12px; }
+.client-filter-select {
+    width: 100%; padding: 9px 11px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+    background: rgba(45, 212, 168, 0.10); color: var(--text-primary);
+    border: 1px solid rgba(45, 212, 168, 0.35);
+}
+.client-filter-select option { background: #0d2137; color: var(--text-primary); font-weight: 400; }
+
+/* Etiqueta de cliente en las tarjetas de factura (modo gestoría) */
+.receipt-client-tag { font-size: 11px; font-weight: 600; color: var(--seaweed-green); margin-top: 2px; }
+
+/* Reasignar cliente en el detalle de factura */
+.detail-client { margin-top: 18px; }
+.detail-client label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.detail-client select {
+    width: 100%; padding: 10px 12px; border-radius: 10px; font-size: 14px; cursor: pointer;
+    background: var(--surface-input); color: var(--text-primary);
+    border: 1px solid var(--border-light); font-family: var(--font-family);
+}
+.detail-client select option { background: #0d2137; color: var(--text-primary); }

@@ -324,18 +324,12 @@ async function loadReceipts() {
         
         // Use onSnapshot to get real-time updates from other devices!
         db.collection('users').doc(currentUserUid).collection('receipts').onSnapshot(snapshot => {
-            receipts = [];
+            allReceipts = [];
             snapshot.forEach(doc => {
-                receipts.push(sanitizeReceipt(doc.data()));
+                allReceipts.push(sanitizeReceipt(doc.data()));
             });
-            receipts.sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-            // Debounce rendering to avoid UI freezing during mass imports/migrations
-            clearTimeout(renderTimeout);
-            renderTimeout = setTimeout(() => {
-                renderDashboard();
-                renderReceiptsList();
-            }, 150);
+            // Deriva `receipts` (filtrado por cliente en modo gestoría) y re-renderiza
+            applyClientFilter();
         });
 
         // Escuchar el contador de uso mensual en tiempo real
@@ -522,6 +516,8 @@ async function loadProfile() {
 async function setAccountType(type) {
     currentAccountType = (type === 'gestoria') ? 'gestoria' : 'empresa';
     applyAccountType();
+    renderClientFilter();
+    applyClientFilter(); // refresca la vista con/sin filtro de cliente
     if (!currentUserUid) return;
     try {
         await db.collection('users').doc(currentUserUid).collection('settings').doc('profile')
@@ -547,6 +543,10 @@ function applyAccountType() {
     const navClientes = document.getElementById('nav-clientes');
     if (navClientes) navClientes.style.display = currentAccountType === 'gestoria' ? '' : 'none';
 
+    const clientFilterWrap = document.getElementById('client-filter-wrap');
+    if (clientFilterWrap) clientFilterWrap.style.display = currentAccountType === 'gestoria' ? '' : 'none';
+    if (currentAccountType !== 'gestoria') currentClientFilter = null;
+
     // Si se pasa a "empresa" estando en la sección de clientes, volver al dashboard.
     if (currentAccountType !== 'gestoria') {
         const sc = document.getElementById('section-clientes');
@@ -557,6 +557,54 @@ function applyAccountType() {
 // ── CLIENTES (modo gestoría) ───────────────────────────────
 let gestoriaClients = [];
 let editingClientId = null;
+let allReceipts = [];           // todas las facturas del usuario (sin filtrar por cliente)
+let currentClientFilter = null; // clientId activo en el selector (null = todos)
+
+// Nombre legible de un cliente por su id.
+function clientName(id) {
+    if (!id) return 'Sin asignar';
+    const c = gestoriaClients.find(x => x.id === id);
+    return c ? c.nombre : 'Cliente eliminado';
+}
+
+// Deriva `receipts` (lo que ven todas las vistas) a partir de `allReceipts`,
+// aplicando el filtro de cliente cuando estamos en modo gestoría.
+function applyClientFilter() {
+    if (currentAccountType === 'gestoria' && currentClientFilter) {
+        receipts = allReceipts.filter(r => r.clientId === currentClientFilter);
+    } else {
+        receipts = allReceipts.slice();
+    }
+    receipts.sort((a, b) => new Date(b.date) - new Date(a.date));
+    clearTimeout(renderTimeout);
+    renderTimeout = setTimeout(() => {
+        renderDashboard();
+        renderReceiptsList();
+    }, 150);
+}
+
+// Rellena el selector de cliente de la barra lateral.
+function renderClientFilter() {
+    const sel = document.getElementById('client-filter');
+    if (!sel) return;
+    const prev = currentClientFilter;
+    sel.innerHTML = '<option value="">👥 Todos los clientes</option>' +
+        gestoriaClients.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('');
+    if (prev && gestoriaClients.some(c => c.id === prev)) {
+        sel.value = prev;
+    } else {
+        sel.value = '';
+        currentClientFilter = null;
+    }
+}
+
+// Rellena un <select> de asignación de cliente (con opción "sin asignar").
+function fillClientSelect(sel, selectedId) {
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+        gestoriaClients.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('');
+    sel.value = selectedId || '';
+}
 
 // Escucha en tiempo real la lista de clientes de la gestoría.
 function listenClients() {
@@ -566,6 +614,9 @@ function listenClients() {
         snap.forEach(doc => gestoriaClients.push(doc.data()));
         gestoriaClients.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
         renderClients();
+        renderClientFilter();
+        // Refrescar las tarjetas para que las etiquetas de cliente muestren el nombre correcto
+        if (currentAccountType === 'gestoria' && allReceipts.length) renderReceiptsList();
     }, err => console.warn('No se pudieron cargar los clientes:', err.code));
 }
 
@@ -856,6 +907,7 @@ function renderReceiptCard(receipt) {
                     <div>
                         <div class="store-name">${escapeHtml(receipt.store || 'Comercio desconocido')}</div>
                         <div class="receipt-date">${formatDateStr(receipt.date)}</div>
+                        ${currentAccountType === 'gestoria' ? `<div class="receipt-client-tag">👤 ${escapeHtml(clientName(receipt.clientId))}</div>` : ''}
                     </div>
                 </div>
                 <div class="receipt-total">${currency.format(receipt.total || 0)}</div>
@@ -989,6 +1041,16 @@ function openDetailModal(id) {
 
     const notesHtml = receipt.notes ? `<p style="font-size:13px;color:var(--text-secondary);margin-top:16px;"><strong>Notas:</strong> ${escapeHtml(receipt.notes)}</p>` : '';
 
+    // Reasignación de cliente (solo gestoría)
+    const clientSelectHtml = (currentAccountType === 'gestoria') ? `
+        <div class="detail-client">
+            <label for="detail-client-select">Cliente asignado</label>
+            <select id="detail-client-select">
+                <option value="">— Sin asignar —</option>
+                ${gestoriaClients.map(c => `<option value="${c.id}" ${receipt.clientId === c.id ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
+            </select>
+        </div>` : '';
+
     DOM.detailBody.innerHTML = `
         <div class="products-table-wrapper">
             <table class="products-table">
@@ -1010,7 +1072,21 @@ function openDetailModal(id) {
             </table>
         </div>
         ${notesHtml}
+        ${clientSelectHtml}
     `;
+
+    if (currentAccountType === 'gestoria') {
+        const dsel = document.getElementById('detail-client-select');
+        if (dsel) dsel.addEventListener('change', async () => {
+            try {
+                await db.collection('users').doc(currentUserUid).collection('receipts').doc(id).update({ clientId: dsel.value || null });
+                showToast('Cliente actualizado', 'success');
+            } catch (e) {
+                console.error('Error asignando cliente:', e);
+                showToast('No se pudo actualizar el cliente', 'error');
+            }
+        });
+    }
 
     openModal(DOM.modalDetail);
 }
@@ -1874,6 +1950,17 @@ function openReviewModal() {
     DOM.reviewDate.value = extractedData.date;
     DOM.reviewNotes.value = extractedData.notes || '';
 
+    // Selector de cliente (solo gestoría): por defecto el cliente filtrado
+    const rcWrap = document.getElementById('review-client-wrap');
+    if (rcWrap) {
+        if (currentAccountType === 'gestoria') {
+            rcWrap.style.display = '';
+            fillClientSelect(document.getElementById('review-client'), currentClientFilter);
+        } else {
+            rcWrap.style.display = 'none';
+        }
+    }
+
     renderReviewProducts();
     openModal(DOM.modalReview);
 }
@@ -1997,6 +2084,12 @@ async function saveReviewedReceipt() {
             hasImage: !!selectedImageBase64,
             createdAt: new Date().toISOString()
         };
+
+        // Asignar cliente (modo gestoría)
+        if (currentAccountType === 'gestoria') {
+            const csel = document.getElementById('review-client');
+            receipt.clientId = (csel && csel.value) ? csel.value : null;
+        }
 
         // Sanitize before saving
         const sanitized = sanitizeReceipt(receipt);
@@ -2277,6 +2370,10 @@ function importData(file) {
                 showToast('Importando a la nube, por favor espera...', 'info');
                 for (const r of imported) {
                     if (!r.id) r.id = generateId();
+                    // En modo gestoría, si la factura no trae cliente, se asigna al cliente filtrado.
+                    if (currentAccountType === 'gestoria' && !r.clientId && currentClientFilter) {
+                        r.clientId = currentClientFilter;
+                    }
                     if (r.imageBase64 && !r.imageUrl) {
                         const url = await saveReceiptImage(r.id, r.imageBase64);
                         if (url) r.imageUrl = url;
@@ -2308,6 +2405,13 @@ function initEventListeners() {
 
     const accTypeSel = document.getElementById('settings-account-type');
     if (accTypeSel) accTypeSel.addEventListener('change', (e) => setAccountType(e.target.value));
+
+    // Selector de cliente (filtro global, gestoría)
+    const clientFilter = document.getElementById('client-filter');
+    if (clientFilter) clientFilter.addEventListener('change', (e) => {
+        currentClientFilter = e.target.value || null;
+        applyClientFilter();
+    });
 
     // Clientes (gestoría)
     const btnAddClient = document.getElementById('btn-add-client');
