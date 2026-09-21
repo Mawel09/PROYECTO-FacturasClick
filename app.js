@@ -200,13 +200,18 @@ function sanitizeReceipt(r) {
     return r;
 }
 
-// Save a receipt image to Firebase Storage and return URL
+// Save a receipt image to Firebase Storage and return URL.
+// Envuelto en un timeout: si Storage no está activado/con reglas o la red falla,
+// la subida podría colgarse indefinidamente y congelar toda una importación.
+// Con el timeout, tras 20s resolvemos a null (la factura se guarda sin foto) y
+// el proceso continúa en vez de quedarse pillado.
 async function saveReceiptImage(receiptId, fileOrBase64) {
     if (!fileOrBase64 || !receiptId) return null;
-    try {
+
+    const doUpload = (async () => {
         const storageRef = storage.ref(`users/${currentUserUid}/receipts/${receiptId}`);
         let uploadTask;
-        
+
         if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:image')) {
             uploadTask = await storageRef.putString(fileOrBase64, 'data_url');
         } else if (typeof fileOrBase64 === 'string') {
@@ -214,9 +219,17 @@ async function saveReceiptImage(receiptId, fileOrBase64) {
         } else {
             uploadTask = await storageRef.put(fileOrBase64);
         }
-        
-        const downloadURL = await uploadTask.ref.getDownloadURL();
-        return downloadURL;
+
+        return await uploadTask.ref.getDownloadURL();
+    })();
+
+    const timeout = new Promise(resolve => setTimeout(() => {
+        console.warn('Subida de imagen agotó el tiempo (20s), se omite la foto:', receiptId);
+        resolve(null);
+    }, 20000));
+
+    try {
+        return await Promise.race([doUpload, timeout]);
     } catch (e) {
         console.error('Error saving receipt image to Firebase:', e);
         return null;
