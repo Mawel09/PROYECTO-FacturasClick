@@ -547,6 +547,19 @@ function applyAccountType() {
     if (clientFilterWrap) clientFilterWrap.style.display = currentAccountType === 'gestoria' ? '' : 'none';
     if (currentAccountType !== 'gestoria') currentClientFilter = null;
 
+    // En modo gestoría, "Lista de Compra" y "Productos" no aportan → ocultarlas.
+    const hideForGestoria = currentAccountType === 'gestoria';
+    ['nav-shopping', 'nav-products'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = hideForGestoria ? 'none' : '';
+    });
+    if (hideForGestoria) {
+        ['section-shopping', 'section-products'].forEach(sid => {
+            const sc = document.getElementById(sid);
+            if (sc && sc.classList.contains('active') && typeof navigateTo === 'function') navigateTo('dashboard');
+        });
+    }
+
     // Si se pasa a "empresa" estando en la sección de clientes, volver al dashboard.
     if (currentAccountType !== 'gestoria') {
         const sc = document.getElementById('section-clientes');
@@ -2397,9 +2410,11 @@ async function exportData() {
         const zip = new JSZip();
 
         // 1. Create CSV
-        let csv = 'ID,Comercio,Fecha,Total,Notas\n';
+        const isGest = currentAccountType === 'gestoria';
+        let csv = isGest ? 'ID,Cliente,Comercio,Fecha,Total,Notas\n' : 'ID,Comercio,Fecha,Total,Notas\n';
         receipts.forEach(r => {
-            csv += `"${r.id}","${(r.store||'').replace(/"/g, '""')}","${r.date}",${r.total},"${(r.notes||'').replace(/"/g, '""')}"\n`;
+            const cli = isGest ? `"${clientName(r.clientId).replace(/"/g, '""')}",` : '';
+            csv += `"${r.id}",${cli}"${(r.store||'').replace(/"/g, '""')}","${r.date}",${r.total},"${(r.notes||'').replace(/"/g, '""')}"\n`;
         });
         zip.file('resumen_gastos.csv', csv);
 
@@ -2429,7 +2444,15 @@ async function exportData() {
         const url = URL.createObjectURL(content);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `thalassa_gestoria_${new Date().toISOString().split('T')[0]}.zip`;
+        let baseName;
+        if (currentAccountType === 'gestoria' && currentClientFilter) {
+            baseName = 'facturas_' + clientName(currentClientFilter).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        } else if (currentAccountType === 'gestoria') {
+            baseName = 'facturas_todos_los_clientes';
+        } else {
+            baseName = 'thalassa_facturas';
+        }
+        a.download = `${baseName}_${new Date().toISOString().split('T')[0]}.zip`;
         document.body.appendChild(a);
         a.click();
         a.remove();
