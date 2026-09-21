@@ -789,7 +789,90 @@ function formatDateStr(dateStr) {
 
 // ── DASHBOARD ──────────────────────────────────────────────
 
+// ── VISTA DE CARTERA (gestoría, "Todos los clientes") ──────
+function renderPortfolio() {
+    const container = document.getElementById('portfolio-view');
+    if (!container) return;
+
+    const month = getCurrentMonth();
+    const monthReceipts = allReceipts.filter(r => (r.date || '').startsWith(month));
+
+    const stats = gestoriaClients.map(c => {
+        const rs = monthReceipts.filter(r => r.clientId === c.id);
+        return { c, count: rs.length, gasto: rs.reduce((s, r) => s + (Number(r.total) || 0), 0) };
+    });
+    stats.sort((a, b) => b.count - a.count || b.gasto - a.gasto);
+
+    if (!gestoriaClients.length) {
+        container.innerHTML = renderEmptyState('Aún no tienes clientes', 'Ve a "Clientes" y añade tu primer cliente para ver aquí el resumen de tu cartera.');
+        return;
+    }
+
+    const totalClients = gestoriaClients.length;
+    const totalMonth = monthReceipts.length;
+    const totalGasto = monthReceipts.reduce((s, r) => s + (Number(r.total) || 0), 0);
+    const sinFacturas = stats.filter(s => s.count === 0).length;
+    const unassigned = monthReceipts.filter(r => !r.clientId || !gestoriaClients.some(c => c.id === r.clientId)).length;
+
+    const icoUsers = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>';
+    const icoDoc = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+    const icoEur = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>';
+    const icoWarn = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+    const kpi = (label, value, cls, svg) => `
+        <div class="kpi-card">
+            <div class="kpi-info"><span class="kpi-label">${label}</span><h3 class="kpi-value">${value}</h3></div>
+            <div class="kpi-icon-wrapper ${cls}">${svg}</div>
+        </div>`;
+
+    const rows = stats.map(s => `
+        <div class="pt-row" data-client-id="${s.c.id}">
+            <span class="pt-cli"><span class="pt-av">${getStoreInitial(s.c.nombre)}</span><span class="pt-nm">${escapeHtml(s.c.nombre)}<small>${s.c.nif ? escapeHtml(s.c.nif) : 'Sin NIF'}</small></span></span>
+            <span class="pt-num">${s.count}</span>
+            <span class="pt-eur">${currency.format(s.gasto)}</span>
+            <span>${s.count > 0 ? '<span class="pt-badge ok">Al día</span>' : '<span class="pt-badge no">Sin facturas</span>'}</span>
+        </div>`).join('');
+
+    const unassignedNote = unassigned > 0 ? `
+        <div class="pt-note">👉 Tienes <strong>${unassigned}</strong> factura${unassigned !== 1 ? 's' : ''} de este mes <strong>sin asignar</strong>. Ábrelas en "Facturas" para asignarlas a un cliente.</div>` : '';
+
+    container.innerHTML = `
+        <div class="kpis-grid">
+            ${kpi('Clientes', totalClients, 'blue', icoUsers)}
+            ${kpi('Facturas del mes', totalMonth, 'green', icoDoc)}
+            ${kpi('Gasto gestionado', currency.format(totalGasto), 'gold', icoEur)}
+            ${kpi('Sin facturas', sinFacturas, 'coral', icoWarn)}
+        </div>
+        <h3 class="pt-title">Tu cartera de clientes</h3>
+        ${unassignedNote}
+        <div class="portfolio-table">
+            <div class="pt-head"><span>Cliente</span><span>Facturas</span><span>Gasto (mes)</span><span>Estado</span></div>
+            ${rows}
+        </div>
+    `;
+
+    container.querySelectorAll('.pt-row').forEach(el => {
+        el.addEventListener('click', () => {
+            currentClientFilter = el.dataset.clientId || null;
+            const sel = document.getElementById('client-filter');
+            if (sel) sel.value = currentClientFilter || '';
+            applyClientFilter();
+        });
+    });
+}
+
 function renderDashboard() {
+    // Modo gestoría con "Todos los clientes" → vista de cartera en vez del dashboard normal.
+    const portfolioEl = document.getElementById('portfolio-view');
+    const bodyEl = document.getElementById('empresa-dashboard-body');
+    if (currentAccountType === 'gestoria' && !currentClientFilter) {
+        if (portfolioEl) portfolioEl.style.display = '';
+        if (bodyEl) bodyEl.style.display = 'none';
+        renderPortfolio();
+        return;
+    }
+    if (portfolioEl) portfolioEl.style.display = 'none';
+    if (bodyEl) bodyEl.style.display = '';
+
     const month = getCurrentMonth();
     const monthReceipts = getMonthReceipts(month);
 

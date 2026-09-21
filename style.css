@@ -2545,3 +2545,40 @@ body::before {
     border: 1px solid var(--border-light); font-family: var(--font-family);
 }
 .detail-client select option { background: #0d2137; color: var(--text-primary); }
+
+/* ===== Vista de cartera (gestoría, "Todos los clientes") ===== */
+.pt-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 24px 0 14px; }
+.pt-note {
+    background: rgba(255, 209, 102, 0.10); border: 1px solid rgba(255, 209, 102, 0.3);
+    color: var(--text-primary); font-size: 13px; padding: 12px 14px; border-radius: 12px; margin-bottom: 14px;
+}
+.portfolio-table {
+    background: var(--surface-card); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); overflow: hidden;
+}
+.pt-head, .pt-row {
+    display: grid; grid-template-columns: 2fr 1fr 1.2fr 1fr; gap: 10px; align-items: center; padding: 12px 16px;
+}
+.pt-head {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--text-secondary); border-bottom: 1px solid var(--border-light);
+}
+.pt-row { border-bottom: 1px solid var(--border-subtle); cursor: pointer; transition: var(--transition-fast); }
+.pt-row:last-child { border-bottom: none; }
+.pt-row:hover { background: var(--surface-card-hover); }
+.pt-cli { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pt-av {
+    width: 34px; height: 34px; flex: none; border-radius: 9px; display: flex; align-items: center;
+    justify-content: center; font-weight: 700; font-size: 14px; color: #04243a;
+    background: linear-gradient(135deg, var(--sky-vivid), var(--sky-accent));
+}
+.pt-nm { display: flex; flex-direction: column; min-width: 0; font-weight: 600; color: var(--text-primary); font-size: 14px; }
+.pt-nm small { font-weight: 400; color: var(--text-secondary); font-size: 11px; }
+.pt-num, .pt-eur { font-weight: 600; color: var(--text-primary); font-size: 14px; }
+.pt-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+.pt-badge.ok { background: rgba(45, 212, 168, 0.16); color: var(--seaweed-green); }
+.pt-badge.no { background: rgba(255, 107, 107, 0.16); color: var(--coral-warm); }
+@media (max-width: 560px) {
+    .pt-head, .pt-row { grid-template-columns: 1.6fr 0.7fr 1fr; }
+    .pt-head span:nth-child(3), .pt-row .pt-eur { display: none; }
+}

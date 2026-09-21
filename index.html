@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=23">
+    <link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
     <!-- ===== AUTH SCREEN ===== -->
@@ -183,6 +183,11 @@
                     </button>
                 </div>
 
+                <!-- Vista de cartera (solo gestoría con "Todos los clientes") -->
+                <div id="portfolio-view" style="display:none;"></div>
+
+                <div id="empresa-dashboard-body">
+
                 <!-- Fiscal Calendar Alert -->
                 <div class="fiscal-alert hidden" id="fiscal-alert-banner">
                     <div class="fiscal-alert-icon">
@@ -258,6 +263,7 @@
                 <div class="receipts-grid" id="dashboard-recent-receipts">
                     <!-- Rendered by JS -->
                 </div>
+                </div><!-- /empresa-dashboard-body -->
             </section>
 
             <!-- ===================== SECTION: RECEIPTS ===================== -->
@@ -785,6 +791,6 @@
     </script>
 
     <!-- App Script (v39 to break cache) -->
-    <script src="app.js?v=44"></script>
+    <script src="app.js?v=45"></script>
 </body>
 </html>
