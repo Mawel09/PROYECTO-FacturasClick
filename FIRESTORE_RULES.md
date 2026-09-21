@@ -37,6 +37,11 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
 
+      // Clientes (modo gestoría): el dueño puede leer y escribir los suyos
+      match /clients/{clientId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
       // Ajustes: el dueño puede leer todos los suyos y escribir todos
       // EXCEPTO el contador de uso ('usage'), que solo lo escribe el backend.
       match /settings/{docId} {

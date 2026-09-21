@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=21">
+    <link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
     <!-- ===== AUTH SCREEN ===== -->
@@ -111,6 +111,10 @@
                 <button class="nav-item active" data-section="dashboard" id="nav-dashboard">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                     Dashboard
+                </button>
+                <button class="nav-item" data-section="clientes" id="nav-clientes" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Clientes
                 </button>
                 <button class="nav-item" data-section="receipts" id="nav-receipts">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
@@ -494,6 +498,21 @@
                 </div>
             </section>
 
+            <!-- ===== CLIENTES (solo gestoría) ===== -->
+            <section class="section" id="section-clientes">
+                <div class="section-header">
+                    <div class="section-title">
+                        <h2>Clientes</h2>
+                        <p>Gestiona los negocios cuyas facturas llevas</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="btn-add-client">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Añadir cliente
+                    </button>
+                </div>
+                <div class="clients-grid" id="clients-grid"></div>
+            </section>
+
             <!-- ===== PANEL DE ADMINISTRACIÓN (solo admin) ===== -->
             <section class="section" id="section-admin">
                 <div class="section-header">
@@ -666,6 +685,35 @@
         </div>
     </div>
 
+    <!-- ===== MODAL: CLIENTE ===== -->
+    <div class="modal-overlay" id="modal-client">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="client-modal-title">Nuevo cliente</h2>
+                <button class="btn-close-modal" id="btn-close-client">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="form-group">
+                <label for="client-nombre">Nombre del cliente *</label>
+                <input type="text" id="client-nombre" placeholder="Ej: Peluquería Cristina" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="client-nif">NIF / CIF</label>
+                <input type="text" id="client-nif" placeholder="Ej: 48595156C" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="client-notas">Notas</label>
+                <input type="text" id="client-notas" placeholder="Opcional" autocomplete="off">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger btn-sm" id="btn-delete-client" style="display:none;">Eliminar</button>
+                <button class="btn btn-secondary" id="btn-cancel-client">Cancelar</button>
+                <button class="btn btn-primary" id="btn-save-client">Guardar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast container -->
     <div class="toast-container" id="toast-container"></div>
 
@@ -729,6 +777,6 @@
     </script>
 
     <!-- App Script (v39 to break cache) -->
-    <script src="app.js?v=42"></script>
+    <script src="app.js?v=43"></script>
 </body>
 </html>

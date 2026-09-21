@@ -543,6 +543,98 @@ function applyAccountType() {
     }
     const sel = document.getElementById('settings-account-type');
     if (sel) sel.value = currentAccountType;
+
+    const navClientes = document.getElementById('nav-clientes');
+    if (navClientes) navClientes.style.display = currentAccountType === 'gestoria' ? '' : 'none';
+
+    // Si se pasa a "empresa" estando en la sección de clientes, volver al dashboard.
+    if (currentAccountType !== 'gestoria') {
+        const sc = document.getElementById('section-clientes');
+        if (sc && sc.classList.contains('active') && typeof navigateTo === 'function') navigateTo('dashboard');
+    }
+}
+
+// ── CLIENTES (modo gestoría) ───────────────────────────────
+let gestoriaClients = [];
+let editingClientId = null;
+
+// Escucha en tiempo real la lista de clientes de la gestoría.
+function listenClients() {
+    if (!currentUserUid) return;
+    db.collection('users').doc(currentUserUid).collection('clients').onSnapshot(snap => {
+        gestoriaClients = [];
+        snap.forEach(doc => gestoriaClients.push(doc.data()));
+        gestoriaClients.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        renderClients();
+    }, err => console.warn('No se pudieron cargar los clientes:', err.code));
+}
+
+function renderClients() {
+    const grid = document.getElementById('clients-grid');
+    if (!grid) return;
+    if (!gestoriaClients.length) {
+        grid.innerHTML = renderEmptyState('Aún no tienes clientes', 'Añade tu primer cliente para empezar a organizar sus facturas.');
+        return;
+    }
+    grid.innerHTML = gestoriaClients.map(c => `
+        <div class="client-card" data-id="${c.id}">
+            <div class="client-av">${getStoreInitial(c.nombre)}</div>
+            <div class="client-info">
+                <h4>${escapeHtml(c.nombre)}</h4>
+                <p>${c.nif ? escapeHtml(c.nif) : 'Sin NIF'}</p>
+            </div>
+            <span class="client-edit">✎</span>
+        </div>
+    `).join('');
+    grid.querySelectorAll('.client-card').forEach(el => {
+        el.addEventListener('click', () => openClientModal(el.dataset.id));
+    });
+}
+
+function openClientModal(clientId = null) {
+    editingClientId = clientId;
+    const c = clientId ? gestoriaClients.find(x => x.id === clientId) : null;
+    document.getElementById('client-modal-title').textContent = c ? 'Editar cliente' : 'Nuevo cliente';
+    document.getElementById('client-nombre').value = c ? (c.nombre || '') : '';
+    document.getElementById('client-nif').value = c ? (c.nif || '') : '';
+    document.getElementById('client-notas').value = c ? (c.notas || '') : '';
+    document.getElementById('btn-delete-client').style.display = c ? '' : 'none';
+    openModal(document.getElementById('modal-client'));
+}
+
+async function saveClient() {
+    const nombre = document.getElementById('client-nombre').value.trim();
+    if (!nombre) { showToast('El nombre del cliente es obligatorio', 'warning'); return; }
+    const id = editingClientId || generateId();
+    const data = {
+        id,
+        nombre,
+        nif: document.getElementById('client-nif').value.trim(),
+        notas: document.getElementById('client-notas').value.trim(),
+    };
+    if (!editingClientId) data.createdAt = new Date().toISOString();
+    try {
+        await db.collection('users').doc(currentUserUid).collection('clients').doc(id).set(data, { merge: true });
+        closeModal(document.getElementById('modal-client'));
+        showToast(editingClientId ? 'Cliente actualizado' : 'Cliente añadido', 'success');
+    } catch (e) {
+        console.error('Error guardando cliente:', e);
+        showToast('No se pudo guardar el cliente', 'error');
+    }
+}
+
+async function deleteClient() {
+    if (!editingClientId) return;
+    const c = gestoriaClients.find(x => x.id === editingClientId);
+    if (!confirm(`¿Eliminar el cliente "${c ? c.nombre : ''}"? Sus facturas no se borran, pero quedarán sin cliente asignado.`)) return;
+    try {
+        await db.collection('users').doc(currentUserUid).collection('clients').doc(editingClientId).delete();
+        closeModal(document.getElementById('modal-client'));
+        showToast('Cliente eliminado', 'success');
+    } catch (e) {
+        console.error('Error eliminando cliente:', e);
+        showToast('No se pudo eliminar el cliente', 'error');
+    }
 }
 
 // ── TOASTS ─────────────────────────────────────────────────
@@ -607,6 +699,9 @@ function navigateTo(sectionId) {
             break;
         case 'admin':
             loadAdminUsage();
+            break;
+        case 'clientes':
+            renderClients();
             break;
     }
 }
@@ -2214,6 +2309,18 @@ function initEventListeners() {
     const accTypeSel = document.getElementById('settings-account-type');
     if (accTypeSel) accTypeSel.addEventListener('change', (e) => setAccountType(e.target.value));
 
+    // Clientes (gestoría)
+    const btnAddClient = document.getElementById('btn-add-client');
+    if (btnAddClient) btnAddClient.addEventListener('click', () => openClientModal(null));
+    const btnSaveClient = document.getElementById('btn-save-client');
+    if (btnSaveClient) btnSaveClient.addEventListener('click', saveClient);
+    const btnDeleteClient = document.getElementById('btn-delete-client');
+    if (btnDeleteClient) btnDeleteClient.addEventListener('click', deleteClient);
+    const btnCloseClient = document.getElementById('btn-close-client');
+    if (btnCloseClient) btnCloseClient.addEventListener('click', () => closeModal(document.getElementById('modal-client')));
+    const btnCancelClient = document.getElementById('btn-cancel-client');
+    if (btnCancelClient) btnCancelClient.addEventListener('click', () => closeModal(document.getElementById('modal-client')));
+
     // Mobile
     DOM.mobileBurger.addEventListener('click', () => {
         DOM.sidebar.classList.toggle('open');
@@ -2367,6 +2474,9 @@ async function init() {
 
     // Cargar el tipo de cuenta (empresa/gestoría) para adaptar la interfaz
     await loadProfile();
+
+    // Escuchar la lista de clientes (para el modo gestoría)
+    listenClients();
 
     // Check API key (load in background so we don't freeze the app if network drops)
     loadApiKey().then(() => updateApiKeyStatus());

@@ -2490,3 +2490,36 @@ body::before {
     border: 1px solid var(--border-light);
 }
 .acct-select option { background: #0d2137; color: var(--text-primary); }
+
+/* ===== Clientes (modo gestoría) ===== */
+.clients-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+}
+.client-card {
+    display: flex; align-items: center; gap: 12px; padding: 16px;
+    background: var(--surface-card); border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg); cursor: pointer; transition: var(--transition-fast);
+}
+.client-card:hover { background: var(--surface-card-hover); border-color: var(--border-active); }
+.client-av {
+    width: 44px; height: 44px; flex: none; border-radius: 12px; display: flex;
+    align-items: center; justify-content: center; font-weight: 700; color: #04243a; font-size: 17px;
+    background: linear-gradient(135deg, var(--sky-vivid), var(--sky-accent));
+}
+.client-info { flex: 1; min-width: 0; }
+.client-info h4 { font-size: 15px; color: var(--text-primary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.client-info p { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+.client-edit { color: var(--text-muted); font-size: 15px; }
+.client-card:hover .client-edit { color: var(--sky-accent); }
+
+/* Inputs del modal de cliente */
+#modal-client .form-group { margin-bottom: 14px; }
+#modal-client label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+#modal-client input {
+    width: 100%; padding: 11px 13px; border-radius: 10px; font-size: 14px;
+    background: var(--surface-input); color: var(--text-primary);
+    border: 1px solid var(--border-light); font-family: var(--font-family);
+}
+#modal-client input:focus { outline: none; border-color: var(--sky-accent); background: var(--surface-input-focus); }
