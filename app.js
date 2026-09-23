@@ -2676,6 +2676,15 @@ function initEventListeners() {
 
     // Receipts filters
     DOM.searchReceipts.addEventListener('input', renderReceiptsList);
+
+    // Evita que el gestor de contraseñas de Chrome autocomplete el buscador con el
+    // email: el campo empieza en readonly (Chrome no autorrellena readonly), y al
+    // hacer clic se vuelve editable. Además limpiamos cualquier valor que se cuele.
+    DOM.searchReceipts.addEventListener('focus', function () { this.removeAttribute('readonly'); });
+    DOM.searchReceipts.value = '';
+    setTimeout(() => {
+        if (DOM.searchReceipts.value) { DOM.searchReceipts.value = ''; renderReceiptsList(); }
+    }, 700);
     DOM.filterStore.addEventListener('change', renderReceiptsList);
     DOM.filterMonth.addEventListener('change', renderReceiptsList);
 
