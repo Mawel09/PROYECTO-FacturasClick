@@ -782,6 +782,28 @@ function getMonthReceipts(monthStr) {
     return receipts.filter(r => r.date && r.date.startsWith(monthStr));
 }
 
+// Facturas cuyo mes (YYYY-MM) está entre fromM y toM (ambos incluidos).
+function getRangeReceipts(fromM, toM) {
+    fromM = fromM || getCurrentMonth();
+    toM = toM || getCurrentMonth();
+    if (fromM > toM) { const t = fromM; fromM = toM; toM = t; }
+    return receipts.filter(r => {
+        const m = (r.date || '').slice(0, 7);
+        return m && m >= fromM && m <= toM;
+    });
+}
+
+// Lee el periodo (desde/hasta) de una sección; por defecto, el mes actual.
+function readPeriod(prefix) {
+    const f = document.getElementById(prefix + '-from');
+    const t = document.getElementById(prefix + '-to');
+    const cur = getCurrentMonth();
+    let from = (f && f.value) || cur;
+    let to = (t && t.value) || cur;
+    if (from > to) { const tmp = from; from = to; to = tmp; if (f) f.value = from; if (t) t.value = to; }
+    return { from, to };
+}
+
 function getStoreInitial(name) {
     return (name || '?').charAt(0).toUpperCase();
 }
@@ -807,7 +829,8 @@ function renderPortfolio() {
     const container = document.getElementById('portfolio-view');
     if (!container) return;
 
-    const month = getCurrentMonth();
+    const dm = document.getElementById('dashboard-month');
+    const month = (dm && dm.value) || getCurrentMonth();
     const monthReceipts = allReceipts.filter(r => (r.date || '').startsWith(month));
 
     const stats = gestoriaClients.map(c => {
@@ -886,7 +909,8 @@ function renderDashboard() {
     if (portfolioEl) portfolioEl.style.display = 'none';
     if (bodyEl) bodyEl.style.display = '';
 
-    const month = getCurrentMonth();
+    const dm = document.getElementById('dashboard-month');
+    const month = (dm && dm.value) || getCurrentMonth();
     const monthReceipts = getMonthReceipts(month);
 
     // KPIs
@@ -916,14 +940,14 @@ function renderDashboard() {
         renderFiscalSummary();
     }
 
-    // Recent receipts (last 5)
-    const sorted = [...receipts].sort((a, b) => new Date(b.date) - new Date(a.date));
-    const recent = sorted.slice(0, 5);
+    // Facturas del mes seleccionado (más recientes primero)
+    const sorted = [...monthReceipts].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const recent = sorted.slice(0, 8);
 
     if (recent.length === 0) {
         DOM.dashboardRecent.innerHTML = renderEmptyState(
-            'No hay facturas aún',
-            'Escanea tu primer ticket de compra para empezar a registrar tus gastos.'
+            'No hay facturas en este mes',
+            'Elige otro mes en el filtro de arriba, o escanea un ticket para empezar.'
         );
         return;
     }
@@ -1207,10 +1231,8 @@ async function deleteReceipt(id) {
 // ── SHOPPING LIST ──────────────────────────────────────────
 
 function renderShoppingList() {
-    const month = DOM.shoppingMonth.value || getCurrentMonth();
-    DOM.shoppingMonth.value = month;
-
-    const monthReceipts = getMonthReceipts(month);
+    const { from, to } = readPeriod('shopping');
+    const monthReceipts = getRangeReceipts(from, to);
 
     // Aggregate products
     const productMap = {};
@@ -1237,8 +1259,8 @@ function renderShoppingList() {
 
     if (sorted.length === 0) {
         DOM.shoppingList.innerHTML = renderEmptyState(
-            'Sin datos para este mes',
-            'Escanea facturas de este periodo para ver tu lista de compra agregada.'
+            'Sin datos para este periodo',
+            'No hay facturas en el rango seleccionado. Amplía las fechas (Desde / Hasta) para ver más.'
         );
         return;
     }
@@ -1272,10 +1294,8 @@ function renderShoppingList() {
 // ── PRODUCTS & CATEGORIES ──────────────────────────────────
 
 function renderProductsSection() {
-    const month = DOM.productsMonth.value || getCurrentMonth();
-    DOM.productsMonth.value = month;
-
-    const monthReceipts = getMonthReceipts(month);
+    const { from, to } = readPeriod('products');
+    const monthReceipts = getRangeReceipts(from, to);
 
     // Group products
     const productMap = {}; // name -> { totalQty, totalSpend, category }
@@ -1381,10 +1401,10 @@ function renderProductsSection() {
 // ── REPORTS ────────────────────────────────────────────────
 
 function renderReports() {
-    const month = DOM.reportsMonth.value || getCurrentMonth();
-    DOM.reportsMonth.value = month;
-
-    const monthReceipts = getMonthReceipts(month);
+    const { from, to } = readPeriod('reports');
+    const monthReceipts = getRangeReceipts(from, to);
+    const isSingleMonth = (from === to);
+    const month = to; // referencia para comparación y previsión
 
     // Summary cards
     const totalSpend = monthReceipts.reduce((s, r) => s + (r.total || 0), 0);
@@ -1408,7 +1428,7 @@ function renderReports() {
         <div class="summary-card">
             <div class="summary-value">${currency.format(totalSpend)}</div>
             <div class="summary-label">Gasto Total</div>
-            ${prevSpend > 0 ? `<div class="summary-change ${changeClass}">${changeIcon} ${Math.abs(spendChange).toFixed(1)}% vs mes anterior</div>` : ''}
+            ${isSingleMonth && prevSpend > 0 ? `<div class="summary-change ${changeClass}">${changeIcon} ${Math.abs(spendChange).toFixed(1)}% vs mes anterior</div>` : ''}
         </div>
         <div class="summary-card">
             <div class="summary-value">${monthReceipts.length}</div>
@@ -2659,14 +2679,12 @@ function initEventListeners() {
     DOM.filterStore.addEventListener('change', renderReceiptsList);
     DOM.filterMonth.addEventListener('change', renderReceiptsList);
 
-    // Shopping list month
-    DOM.shoppingMonth.addEventListener('change', renderShoppingList);
-
-    // Products month
-    DOM.productsMonth.addEventListener('change', renderProductsSection);
-
-    // Reports month
-    DOM.reportsMonth.addEventListener('change', renderReports);
+    // Filtros de periodo (Desde/Hasta) por sección + selector de mes del dashboard
+    const dashMonth = document.getElementById('dashboard-month');
+    if (dashMonth) dashMonth.addEventListener('change', renderDashboard);
+    ['shopping-from', 'shopping-to'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', renderShoppingList); });
+    ['products-from', 'products-to'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', renderProductsSection); });
+    ['reports-from', 'reports-to'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', renderReports); });
 }
 
 // ── INIT ───────────────────────────────────────────────────
@@ -2675,9 +2693,14 @@ async function init() {
     // Set default month values FIRST
     const currentMonth = getCurrentMonth();
     DOM.filterMonth.value = '';
-    DOM.shoppingMonth.value = currentMonth;
-    DOM.productsMonth.value = currentMonth;
-    DOM.reportsMonth.value = currentMonth;
+    const dmEl = document.getElementById('dashboard-month');
+    if (dmEl && !dmEl.value) dmEl.value = currentMonth;
+    ['shopping', 'products', 'reports'].forEach(function (s) {
+        const f = document.getElementById(s + '-from');
+        const t = document.getElementById(s + '-to');
+        if (f && !f.value) f.value = currentMonth;
+        if (t && !t.value) t.value = currentMonth;
+    });
 
     // Attach event listeners before loading data so UI doesn't freeze
     initEventListeners();

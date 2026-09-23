@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=24">
+    <link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
     <!-- ===== AUTH SCREEN ===== -->
@@ -177,10 +177,14 @@
                         <h2>Dashboard</h2>
                         <p>Resumen de tus gastos y actividad reciente</p>
                     </div>
-                    <button class="btn btn-primary" id="btn-scan-dashboard">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                        Escanear Factura
-                    </button>
+                    <div class="dash-tools">
+                        <label class="period-label" for="dashboard-month">Mes</label>
+                        <input type="month" id="dashboard-month" class="period-input">
+                        <button class="btn btn-primary" id="btn-scan-dashboard">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            Escanear Factura
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Vista de cartera (solo gestoría con "Todos los clientes") -->
@@ -288,7 +292,7 @@
                 <!-- Filters -->
                 <div class="filter-bar" id="receipts-filter-bar">
                     <div class="search-bar">
-                        <input type="text" id="search-receipts" placeholder="Buscar por producto o comercio...">
+                        <input type="search" id="search-receipts" name="tf-buscar" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Buscar por producto o comercio...">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     </div>
                     <select id="filter-store">
@@ -312,8 +316,11 @@
                     </div>
                 </div>
 
-                <div class="filter-bar">
-                    <input type="month" id="shopping-month">
+                <div class="filter-bar period-bar">
+                    <span class="period-label">Desde</span>
+                    <input type="month" id="shopping-from" class="period-input">
+                    <span class="period-label">Hasta</span>
+                    <input type="month" id="shopping-to" class="period-input">
                 </div>
 
                 <div class="shopping-list-grid" id="shopping-list">
@@ -330,8 +337,11 @@
                     </div>
                 </div>
 
-                <div class="filter-bar">
-                    <input type="month" id="products-month">
+                <div class="filter-bar period-bar">
+                    <span class="period-label">Desde</span>
+                    <input type="month" id="products-from" class="period-input">
+                    <span class="period-label">Hasta</span>
+                    <input type="month" id="products-to" class="period-input">
                 </div>
 
                 <!-- Category Spend Summary -->
@@ -365,8 +375,11 @@
                     </div>
                 </div>
 
-                <div class="filter-bar">
-                    <input type="month" id="reports-month">
+                <div class="filter-bar period-bar">
+                    <span class="period-label">Desde</span>
+                    <input type="month" id="reports-from" class="period-input">
+                    <span class="period-label">Hasta</span>
+                    <input type="month" id="reports-to" class="period-input">
                 </div>
 
                 <!-- Summary cards -->
@@ -791,6 +804,6 @@
     </script>
 
     <!-- App Script (v39 to break cache) -->
-    <script src="app.js?v=46"></script>
+    <script src="app.js?v=47"></script>
 </body>
 </html>

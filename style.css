@@ -2582,3 +2582,15 @@ body::before {
     .pt-head, .pt-row { grid-template-columns: 1.6fr 0.7fr 1fr; }
     .pt-head span:nth-child(3), .pt-row .pt-eur { display: none; }
 }
+
+/* ===== Filtros de periodo (mes / Desde-Hasta) ===== */
+.period-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dash-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.period-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+.period-input {
+    padding: 9px 11px; border-radius: 10px; font-size: 13px; font-family: var(--font-family);
+    background: var(--surface-input); color: var(--text-primary);
+    border: 1px solid var(--border-light); cursor: pointer;
+}
+.period-input:focus { outline: none; border-color: var(--sky-accent); }
+.period-input::-webkit-calendar-picker-indicator { filter: invert(0.85); cursor: pointer; }
