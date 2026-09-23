@@ -1400,6 +1400,43 @@ function renderProductsSection() {
 
 // ── REPORTS ────────────────────────────────────────────────
 
+// Panel visual de gasto por categoría (sección) para el periodo seleccionado.
+function renderReportsCategorySpend(periodReceipts) {
+    const container = document.getElementById('reports-category-spend');
+    if (!container) return;
+
+    const spend = { peluqueria: 0, estetica: 0, general: 0, 'sin-asignar': 0 };
+    let total = 0;
+    periodReceipts.forEach(r => {
+        (r.products || []).forEach(p => {
+            const key = (p.name || '').toLowerCase().trim();
+            const cat = productCategories[key] || 'sin-asignar';
+            const amount = Number(p.totalPrice) || 0;
+            if (spend[cat] === undefined) spend[cat] = 0;
+            spend[cat] += amount;
+            total += amount;
+        });
+    });
+
+    const cats = [
+        { id: 'peluqueria', label: 'Peluquería', class: 'cat-peluqueria' },
+        { id: 'estetica', label: 'Estética', class: 'cat-estetica' },
+        { id: 'general', label: 'General', class: 'cat-general' },
+        { id: 'sin-asignar', label: 'Sin asignar', class: 'cat-sin-asignar' }
+    ];
+
+    container.innerHTML = cats.map(c => {
+        const amount = spend[c.id] || 0;
+        const pct = total > 0 ? Math.round((amount / total) * 100) : 0;
+        return `
+            <div class="category-card ${c.class}">
+                <div class="category-card-title">${c.label}</div>
+                <div class="category-card-amount">${currency.format(amount)}</div>
+                <div class="category-card-count">${pct}% del gasto</div>
+            </div>`;
+    }).join('');
+}
+
 function renderReports() {
     const { from, to } = readPeriod('reports');
     const monthReceipts = getRangeReceipts(from, to);
@@ -1443,6 +1480,9 @@ function renderReports() {
             <div class="summary-label">Comercios Visitados</div>
         </div>
     `;
+
+    // Gasto por categoría (peluquería / estética / general / sin asignar)
+    renderReportsCategorySpend(monthReceipts);
 
     // Chart: Spend by store
     const storeSpend = {};
