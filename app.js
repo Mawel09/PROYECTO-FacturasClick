@@ -2681,10 +2681,14 @@ function initEventListeners() {
     // email: el campo empieza en readonly (Chrome no autorrellena readonly), y al
     // hacer clic se vuelve editable. Además limpiamos cualquier valor que se cuele.
     DOM.searchReceipts.addEventListener('focus', function () { this.removeAttribute('readonly'); });
+    DOM.searchReceipts.addEventListener('mousedown', function () { this.removeAttribute('readonly'); });
     DOM.searchReceipts.value = '';
+    // Pasada la ventana de autocompletado inicial, dejamos el campo editable y
+    // limpiamos cualquier valor que Chrome haya podido colar.
     setTimeout(() => {
+        DOM.searchReceipts.removeAttribute('readonly');
         if (DOM.searchReceipts.value) { DOM.searchReceipts.value = ''; renderReceiptsList(); }
-    }, 700);
+    }, 800);
     DOM.filterStore.addEventListener('change', renderReceiptsList);
     DOM.filterMonth.addEventListener('change', renderReceiptsList);
 
