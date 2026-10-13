@@ -1149,6 +1149,32 @@ body::before {
 .reorder-badge.due { background: rgba(255, 107, 107, 0.16); color: var(--coral-warm); }
 .reorder-badge.soon { background: rgba(255, 209, 102, 0.16); color: var(--sand-gold); }
 .reorder-badge.ok { background: rgba(45, 212, 168, 0.16); color: var(--seaweed-green); }
+.reorder-badge.watch { background: rgba(126, 200, 227, 0.14); color: var(--text-secondary); }
+.reorder-card.watch { border-left-color: rgba(126, 200, 227, 0.35); opacity: 0.92; }
+
+.reorder-watch-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 26px 0 4px;
+}
+
+.reorder-subtitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.reorder-subcount {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: var(--surface-card);
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    padding: 1px 9px;
+}
 
 .reorder-side {
     text-align: right;

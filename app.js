@@ -1256,12 +1256,13 @@ function computeReorderData() {
 
     const windowReceipts = receipts.filter(r => r.date && r.date >= cutoffStr && r.date <= todayStr);
 
-    // Agregamos las compras por producto (nombre normalizado)
+    // Agregamos las compras por producto (nombre normalizado de forma robusta)
     const map = {};
     windowReceipts.forEach(r => {
         (r.products || []).forEach(p => {
             if (!p || !p.name) return;
-            const key = p.name.toLowerCase().replace(/\s+/g, ' ').trim();
+            const key = normalizeProductKey(p.name);
+            if (!key) return;
             if (!map[key]) map[key] = { name: p.name, events: [], totalQty: 0, totalSpend: 0, stores: {} };
             const qty = Number(p.qty) || 1;
             const price = Number(p.totalPrice) || 0;
@@ -1273,7 +1274,8 @@ function computeReorderData() {
     });
 
     const spanDays = Math.max((todayMs - new Date(cutoffStr).getTime()) / MS_DAY, 1);
-    const items = [];
+    const items = [];      // reposición fiable
+    const watchItems = []; // habituales a revisar (pares poco fiables)
     let monthlyTotal = 0;
 
     Object.values(map).forEach(prod => {
@@ -1291,7 +1293,7 @@ function computeReorderData() {
         const monthly = prod.totalSpend / (spanDays / 30);
         monthlyTotal += monthly;
 
-        // Solo productos recurrentes (2+ compras en días distintos) entran en reposición
+        // Solo productos recurrentes (2+ compras en días distintos)
         if (purchases < 2) return;
 
         // Cadencia media (días entre compras consecutivas)
@@ -1306,62 +1308,81 @@ function computeReorderData() {
         const ratio = daysSince / cadence;
         const daysUntil = Math.round(cadence - daysSince); // negativo = atrasado
 
-        // Afinado: descartar pares poco fiables (2 compras muy seguidas o patrón roto)
-        if (purchases === 2) {
-            if (intervals[0] < MIN_INTERVAL_FOR_PAIR) return;
-            if (daysSince > cadence * MAX_STALE_RATIO_PAIR) return;
+        const suggestedQty = Math.max(1, Math.round(prod.totalQty / purchases));
+        const avgUnitPrice = prod.totalQty > 0 ? prod.totalSpend / prod.totalQty : prod.totalSpend / purchases;
+        const estCost = suggestedQty * avgUnitPrice;
+        const topStore = Object.entries(prod.stores).sort((a, b) => b[1] - a[1])[0];
+        const base = {
+            name: prod.name, purchases, cadence, daysSince, daysUntil, ratio,
+            suggestedQty, estCost, monthly, lastDate, store: topStore ? topStore[0] : ''
+        };
+
+        // Afinado: los pares poco fiables (2 compras muy seguidas o patrón roto) no
+        // predicen bien, pero los mostramos aparte en "a revisar" en vez de ocultarlos.
+        if (purchases === 2 && (intervals[0] < MIN_INTERVAL_FOR_PAIR || daysSince > cadence * MAX_STALE_RATIO_PAIR)) {
+            watchItems.push({ ...base, status: 'watch' });
+            return;
         }
 
         let status;
         if (ratio >= 1) status = 'due';
         else if (ratio >= 0.75) status = 'soon';
         else status = 'ok';
-
-        const suggestedQty = Math.max(1, Math.round(prod.totalQty / purchases));
-        const avgUnitPrice = prod.totalQty > 0 ? prod.totalSpend / prod.totalQty : prod.totalSpend / purchases;
-        const estCost = suggestedQty * avgUnitPrice;
-        const topStore = Object.entries(prod.stores).sort((a, b) => b[1] - a[1])[0];
-
-        items.push({
-            name: prod.name, purchases, cadence, daysSince, daysUntil, ratio, status,
-            suggestedQty, estCost, monthly, lastDate, store: topStore ? topStore[0] : ''
-        });
+        items.push({ ...base, status });
     });
 
     // Más atrasado primero
     items.sort((a, b) => b.ratio - a.ratio);
+    watchItems.sort((a, b) => b.daysSince - a.daysSince);
 
     const dueItems = items.filter(i => i.status === 'due');
     const soonItems = items.filter(i => i.status === 'soon');
     const dueCost = dueItems.reduce((a, i) => a + i.estCost, 0);
-    return { items, monthlyTotal, dueItems, soonItems, dueCost };
+    return { items, watchItems, monthlyTotal, dueItems, soonItems, dueCost };
+}
+
+// Clave de producto robusta: ignora anotaciones entre paréntesis (x6, dto, SKU,
+// rotura stock...), sufijos tras guion (— ABONO) y puntuación/mayúsculas, pero
+// MANTIENE los números del nombre (ej. tinte 4.0 ≠ 6.0) para no fusionar colores.
+function normalizeProductKey(name) {
+    return (name || '')
+        .toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/\(.*?\)/g, ' ')
+        .replace(/\s[—–-]\s.*$/, ' ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 function renderSmartReorder() {
     const panel = document.getElementById('smart-shopping-panel');
     if (!panel) return;
 
-    const { items, monthlyTotal, dueItems, soonItems, dueCost } = computeReorderData();
+    const { items, watchItems, monthlyTotal, dueItems, soonItems, dueCost } = computeReorderData();
 
-    if (items.length === 0) {
+    if (items.length === 0 && watchItems.length === 0) {
         panel.innerHTML = `
             <div class="smart-reorder-empty">
                 <strong>Aún no puedo predecir reposiciones.</strong>
-                <span>Necesito productos comprados 2 o más veces (y con un ritmo mínimamente fiable) en los últimos ${SMART_REORDER_MONTHS} meses para detectar un patrón. Sigue subiendo facturas y esta lista se irá afinando sola.</span>
+                <span>Necesito productos comprados 2 o más veces en los últimos ${SMART_REORDER_MONTHS} meses para detectar un patrón. Sigue subiendo facturas y esta lista se irá afinando sola.</span>
             </div>`;
         return;
     }
 
     const statusMeta = {
-        due:  { badge: 'Reponer ya', cls: 'due' },
-        soon: { badge: 'Pronto',     cls: 'soon' },
-        ok:   { badge: 'Al día',     cls: 'ok' }
+        due:   { badge: 'Reponer ya', cls: 'due' },
+        soon:  { badge: 'Pronto',     cls: 'soon' },
+        ok:    { badge: 'Al día',     cls: 'ok' },
+        watch: { badge: 'A revisar',  cls: 'watch' }
     };
 
-    const cards = items.map(i => {
+    const buildCard = i => {
         const meta = statusMeta[i.status];
         let timing;
-        if (i.status === 'due') {
+        if (i.status === 'watch') {
+            timing = `última hace ${i.daysSince} d`;
+        } else if (i.status === 'due') {
             timing = i.daysUntil < 0 ? `atrasado ${Math.abs(i.daysUntil)} días` : 'toca ahora';
         } else {
             timing = `en ~${Math.max(i.daysUntil, 0)} días`;
@@ -1372,7 +1393,7 @@ function renderSmartReorder() {
                     <div class="reorder-name">${escapeHtml(i.name)}</div>
                     <div class="reorder-meta">
                         <span class="reorder-badge ${meta.cls}">${meta.badge}</span>
-                        <span>cada ~${Math.round(i.cadence)} días · última hace ${i.daysSince} d</span>
+                        <span>cada ~${Math.round(i.cadence)} días · ${i.purchases} compras · última hace ${i.daysSince} d</span>
                         ${i.store ? `<span>· ${escapeHtml(i.store)}</span>` : ''}
                     </div>
                 </div>
@@ -1382,7 +1403,19 @@ function renderSmartReorder() {
                     <div class="reorder-timing">${timing}</div>
                 </div>
             </div>`;
-    }).join('');
+    };
+
+    const mainList = items.length
+        ? `<div class="reorder-list">${items.map(buildCard).join('')}</div>`
+        : `<p class="smart-reorder-note">Aún no hay productos con un ritmo de compra fiable. Mira los de "A revisar" más abajo.</p>`;
+
+    const watchSection = watchItems.length ? `
+        <div class="reorder-watch-header">
+            <h4 class="reorder-subtitle">Productos habituales a revisar</h4>
+            <span class="reorder-subcount">${watchItems.length}</span>
+        </div>
+        <p class="smart-reorder-note">Los compraste 2 veces muy seguidas o hace tiempo, así que todavía no tengo un ritmo fiable. Échales un ojo tú por si toca reponerlos.</p>
+        <div class="reorder-list">${watchItems.map(buildCard).join('')}</div>` : '';
 
     panel.innerHTML = `
         <div class="smart-reorder-summary">
@@ -1399,11 +1432,12 @@ function renderSmartReorder() {
             <div class="reorder-tile neutral">
                 <span class="reorder-tile-label">Gasto mensual estimado</span>
                 <span class="reorder-tile-value">${currency.format(monthlyTotal)}</span>
-                <span class="reorder-tile-sub">${items.length} productos recurrentes</span>
+                <span class="reorder-tile-sub">${items.length} recurrentes · ${watchItems.length} a revisar</span>
             </div>
         </div>
-        <p class="smart-reorder-note">Basado en tus compras de los últimos ${SMART_REORDER_MONTHS} meses. Solo incluye productos comprados 2+ veces; la cantidad y el coste son estimaciones de tu media.</p>
-        <div class="reorder-list">${cards}</div>`;
+        <p class="smart-reorder-note">Basado en tus compras de los últimos ${SMART_REORDER_MONTHS} meses. La cantidad y el coste son estimaciones de tu media.</p>
+        ${mainList}
+        ${watchSection}`;
 }
 
 // Descarga la lista inteligente de reposición como PDF (checklist para la compra).
@@ -1412,16 +1446,17 @@ function exportReorderPDF() {
         showToast('Error cargando librería PDF', 'error');
         return;
     }
-    const { items, monthlyTotal, dueItems, soonItems } = computeReorderData();
-    if (!items.length) {
+    const { items, watchItems, monthlyTotal, dueItems, soonItems } = computeReorderData();
+    const rows = [...items, ...watchItems];
+    if (!rows.length) {
         showToast('Aún no hay productos recurrentes para la lista', 'info');
         return;
     }
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const statusLabel = { due: 'Reponer ya', soon: 'Pronto', ok: 'Al dia' };
-    const statusColor = { due: [200, 50, 50], soon: [176, 132, 0], ok: [30, 140, 100] };
+    const statusLabel = { due: 'Reponer ya', soon: 'Pronto', ok: 'Al dia', watch: 'A revisar' };
+    const statusColor = { due: [200, 50, 50], soon: [176, 132, 0], ok: [30, 140, 100], watch: [120, 120, 120] };
 
     doc.setFontSize(18);
     doc.text('Lista de la Compra', 14, 18);
@@ -1432,9 +1467,9 @@ function exportReorderPDF() {
     doc.setTextColor(0);
 
     doc.setFontSize(11);
-    doc.text(`Toca reponer ya: ${dueItems.length}    Pronto: ${soonItems.length}    Gasto mensual estimado: ${currency.format(monthlyTotal)}`, 14, 33);
+    doc.text(`Toca reponer ya: ${dueItems.length}    Pronto: ${soonItems.length}    A revisar: ${watchItems.length}    Gasto mensual estimado: ${currency.format(monthlyTotal)}`, 14, 33);
 
-    const body = items.map(i => [
+    const body = rows.map(i => [
         '',
         i.name,
         String(i.suggestedQty),
@@ -1460,7 +1495,7 @@ function exportReorderPDF() {
         },
         willDrawCell: function (d) {
             if (d.section === 'body' && d.column.index === 3) {
-                const st = items[d.row.index].status;
+                const st = rows[d.row.index].status;
                 d.cell.styles.textColor = statusColor[st] || [0, 0, 0];
                 d.cell.styles.fontStyle = 'bold';
             }
@@ -1479,7 +1514,7 @@ function exportReorderPDF() {
     });
 
     const finalY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 40) + 8;
-    const totalEst = items.reduce((a, i) => a + i.estCost, 0);
+    const totalEst = rows.reduce((a, i) => a + i.estCost, 0);
     doc.setFontSize(10);
     doc.setFont(undefined, 'bold');
     doc.text(`Coste estimado total de la lista: ${currency.format(totalEst)}`, 14, finalY);
