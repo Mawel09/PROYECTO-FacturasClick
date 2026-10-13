@@ -1495,9 +1495,11 @@ function exportReorderPDF() {
         },
         willDrawCell: function (d) {
             if (d.section === 'body' && d.column.index === 3) {
-                const st = rows[d.row.index].status;
-                d.cell.styles.textColor = statusColor[st] || [0, 0, 0];
-                d.cell.styles.fontStyle = 'bold';
+                const r = rows[d.row.index];
+                if (r) {
+                    d.cell.styles.textColor = statusColor[r.status] || [0, 0, 0];
+                    d.cell.styles.fontStyle = 'bold';
+                }
             }
         },
         didDrawCell: function (d) {
