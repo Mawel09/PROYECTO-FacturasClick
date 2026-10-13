@@ -1324,7 +1324,7 @@ function computeReorderData() {
 
         items.push({
             name: prod.name, purchases, cadence, daysSince, daysUntil, ratio, status,
-            suggestedQty, estCost, monthly, store: topStore ? topStore[0] : ''
+            suggestedQty, estCost, monthly, lastDate, store: topStore ? topStore[0] : ''
         });
     });
 
@@ -1439,13 +1439,14 @@ function exportReorderPDF() {
         i.name,
         String(i.suggestedQty),
         statusLabel[i.status],
+        formatDateStr(i.lastDate),
         i.store || '-',
         `~${currency.format(i.estCost)}`
     ]);
 
     doc.autoTable({
         startY: 39,
-        head: [['', 'Producto', 'Uds.', 'Estado', 'Comercio', 'Coste aprox.']],
+        head: [['', 'Producto', 'Uds.', 'Estado', 'Ultima compra', 'Comercio', 'Coste aprox.']],
         body,
         theme: 'grid',
         headStyles: { fillColor: [44, 62, 80] },
@@ -1453,8 +1454,9 @@ function exportReorderPDF() {
         columnStyles: {
             0: { cellWidth: 9, halign: 'center' },
             2: { cellWidth: 12, halign: 'center' },
-            3: { cellWidth: 24 },
-            5: { halign: 'right', cellWidth: 26 }
+            3: { cellWidth: 22 },
+            4: { cellWidth: 24, halign: 'center' },
+            6: { halign: 'right', cellWidth: 24 }
         },
         willDrawCell: function (d) {
             if (d.section === 'body' && d.column.index === 3) {
