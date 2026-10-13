@@ -1237,12 +1237,16 @@ async function deleteReceipt(id) {
 // de compra de cada producto recurrente, qué toca reponer, cuánto y el coste.
 const SMART_REORDER_MONTHS = 6;
 const MS_DAY = 86400000;
+// Afinado de cadencia: con solo 2 compras el ritmo es poco fiable. Para que un
+// producto con exactamente 2 compras entre en la lista exigimos que estén
+// separadas al menos MIN_INTERVAL_FOR_PAIR días (si no, es un pico puntual, no
+// un ritmo real) y que no lleve sin repetirse más de MAX_STALE_RATIO_PAIR veces
+// su cadencia (si no, el patrón se ha roto y no es una necesidad recurrente).
+const MIN_INTERVAL_FOR_PAIR = 21;
+const MAX_STALE_RATIO_PAIR = 3;
 
-function renderSmartReorder() {
-    const panel = document.getElementById('smart-shopping-panel');
-    if (!panel) return;
-
-    // Ventana: últimos N meses desde hoy
+// Calcula los datos de reposición (compartido por la vista y el PDF).
+function computeReorderData() {
     const today = new Date();
     const cutoff = new Date(today);
     cutoff.setMonth(cutoff.getMonth() - SMART_REORDER_MONTHS);
@@ -1291,16 +1295,22 @@ function renderSmartReorder() {
         if (purchases < 2) return;
 
         // Cadencia media (días entre compras consecutivas)
-        let sumInt = 0;
+        const intervals = [];
         for (let i = 1; i < days.length; i++) {
-            sumInt += (new Date(days[i].date).getTime() - new Date(days[i - 1].date).getTime()) / MS_DAY;
+            intervals.push((new Date(days[i].date).getTime() - new Date(days[i - 1].date).getTime()) / MS_DAY);
         }
-        const cadence = Math.max(sumInt / (days.length - 1), 1);
+        const cadence = Math.max(intervals.reduce((a, b) => a + b, 0) / intervals.length, 1);
 
         const lastDate = days[days.length - 1].date;
         const daysSince = Math.round((todayMs - new Date(lastDate).getTime()) / MS_DAY);
         const ratio = daysSince / cadence;
         const daysUntil = Math.round(cadence - daysSince); // negativo = atrasado
+
+        // Afinado: descartar pares poco fiables (2 compras muy seguidas o patrón roto)
+        if (purchases === 2) {
+            if (intervals[0] < MIN_INTERVAL_FOR_PAIR) return;
+            if (daysSince > cadence * MAX_STALE_RATIO_PAIR) return;
+        }
 
         let status;
         if (ratio >= 1) status = 'due';
@@ -1318,21 +1328,29 @@ function renderSmartReorder() {
         });
     });
 
-    if (items.length === 0) {
-        panel.innerHTML = `
-            <div class="smart-reorder-empty">
-                <strong>Aún no puedo predecir reposiciones.</strong>
-                <span>Necesito productos comprados 2 o más veces en los últimos ${SMART_REORDER_MONTHS} meses para detectar un patrón. Sigue subiendo facturas y esta lista se irá afinando sola.</span>
-            </div>`;
-        return;
-    }
-
     // Más atrasado primero
     items.sort((a, b) => b.ratio - a.ratio);
 
     const dueItems = items.filter(i => i.status === 'due');
     const soonItems = items.filter(i => i.status === 'soon');
     const dueCost = dueItems.reduce((a, i) => a + i.estCost, 0);
+    return { items, monthlyTotal, dueItems, soonItems, dueCost };
+}
+
+function renderSmartReorder() {
+    const panel = document.getElementById('smart-shopping-panel');
+    if (!panel) return;
+
+    const { items, monthlyTotal, dueItems, soonItems, dueCost } = computeReorderData();
+
+    if (items.length === 0) {
+        panel.innerHTML = `
+            <div class="smart-reorder-empty">
+                <strong>Aún no puedo predecir reposiciones.</strong>
+                <span>Necesito productos comprados 2 o más veces (y con un ritmo mínimamente fiable) en los últimos ${SMART_REORDER_MONTHS} meses para detectar un patrón. Sigue subiendo facturas y esta lista se irá afinando sola.</span>
+            </div>`;
+        return;
+    }
 
     const statusMeta = {
         due:  { badge: 'Reponer ya', cls: 'due' },
@@ -1386,6 +1404,87 @@ function renderSmartReorder() {
         </div>
         <p class="smart-reorder-note">Basado en tus compras de los últimos ${SMART_REORDER_MONTHS} meses. Solo incluye productos comprados 2+ veces; la cantidad y el coste son estimaciones de tu media.</p>
         <div class="reorder-list">${cards}</div>`;
+}
+
+// Descarga la lista inteligente de reposición como PDF (checklist para la compra).
+function exportReorderPDF() {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        showToast('Error cargando librería PDF', 'error');
+        return;
+    }
+    const { items, monthlyTotal, dueItems, soonItems } = computeReorderData();
+    if (!items.length) {
+        showToast('Aún no hay productos recurrentes para la lista', 'info');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const statusLabel = { due: 'Reponer ya', soon: 'Pronto', ok: 'Al dia' };
+    const statusColor = { due: [200, 50, 50], soon: [176, 132, 0], ok: [30, 140, 100] };
+
+    doc.setFontSize(18);
+    doc.text('Lista de la Compra', 14, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(110);
+    const dateStr = new Date().toLocaleDateString('es-ES');
+    doc.text(`Generada el ${dateStr}  -  basada en tus compras de los ultimos ${SMART_REORDER_MONTHS} meses`, 14, 25);
+    doc.setTextColor(0);
+
+    doc.setFontSize(11);
+    doc.text(`Toca reponer ya: ${dueItems.length}    Pronto: ${soonItems.length}    Gasto mensual estimado: ${currency.format(monthlyTotal)}`, 14, 33);
+
+    const body = items.map(i => [
+        '',
+        i.name,
+        String(i.suggestedQty),
+        statusLabel[i.status],
+        i.store || '-',
+        `~${currency.format(i.estCost)}`
+    ]);
+
+    doc.autoTable({
+        startY: 39,
+        head: [['', 'Producto', 'Uds.', 'Estado', 'Comercio', 'Coste aprox.']],
+        body,
+        theme: 'grid',
+        headStyles: { fillColor: [44, 62, 80] },
+        styles: { fontSize: 9, cellPadding: 2.5, valign: 'middle' },
+        columnStyles: {
+            0: { cellWidth: 9, halign: 'center' },
+            2: { cellWidth: 12, halign: 'center' },
+            3: { cellWidth: 24 },
+            5: { halign: 'right', cellWidth: 26 }
+        },
+        willDrawCell: function (d) {
+            if (d.section === 'body' && d.column.index === 3) {
+                const st = items[d.row.index].status;
+                d.cell.styles.textColor = statusColor[st] || [0, 0, 0];
+                d.cell.styles.fontStyle = 'bold';
+            }
+        },
+        didDrawCell: function (d) {
+            // Casilla vacía en la primera columna para ir cribando la compra
+            if (d.section === 'body' && d.column.index === 0) {
+                const s = 4.2;
+                const x = d.cell.x + (d.cell.width - s) / 2;
+                const y = d.cell.y + (d.cell.height - s) / 2;
+                doc.setDrawColor(120);
+                doc.setLineWidth(0.3);
+                doc.rect(x, y, s, s);
+            }
+        }
+    });
+
+    const finalY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 40) + 8;
+    const totalEst = items.reduce((a, i) => a + i.estCost, 0);
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text(`Coste estimado total de la lista: ${currency.format(totalEst)}`, 14, finalY);
+    doc.setFont(undefined, 'normal');
+
+    doc.save(`lista-compra-${new Date().toISOString().slice(0, 10)}.pdf`);
+    showToast('Lista descargada en PDF', 'success');
 }
 
 function renderShoppingList() {
@@ -2895,6 +2994,8 @@ function initEventListeners() {
     const dashMonth = document.getElementById('dashboard-month');
     if (dashMonth) dashMonth.addEventListener('change', renderDashboard);
     ['shopping-from', 'shopping-to'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', renderShoppingList); });
+    const btnReorderPdf = document.getElementById('btn-reorder-pdf');
+    if (btnReorderPdf) btnReorderPdf.addEventListener('click', exportReorderPDF);
     ['products-from', 'products-to'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', renderProductsSection); });
     ['reports-from', 'reports-to'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', renderReports); });
 }
