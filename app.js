@@ -1261,6 +1261,7 @@ function computeReorderData() {
     windowReceipts.forEach(r => {
         (r.products || []).forEach(p => {
             if (!p || !p.name) return;
+            if (isGenericBucket(p.name)) return; // ignora líneas "cajón de sastre"
             const key = normalizeProductKey(p.name);
             if (!key) return;
             if (!map[key]) map[key] = { name: p.name, events: [], totalQty: 0, totalSpend: 0, stores: {} };
@@ -1339,6 +1340,13 @@ function computeReorderData() {
     const soonItems = items.filter(i => i.status === 'soon');
     const dueCost = dueItems.reduce((a, i) => a + i.estCost, 0);
     return { items, watchItems, monthlyTotal, dueItems, soonItems, dueCost };
+}
+
+// Detecta líneas "cajón de sastre" (resúmenes como "Otros artículos varios...")
+// que no son un producto concreto y no deben entrar en la lista de reposición.
+function isGenericBucket(name) {
+    const n = (name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return /^(otros|varios)\s+articulos\b/.test(n) || n.includes('articulos varios');
 }
 
 // Clave de producto robusta: ignora anotaciones entre paréntesis (x6, dto, SKU,
