@@ -318,10 +318,12 @@ let renderTimeout;
 async function loadReceipts() {
     try {
         await loadProductCategories();
-        
-        // Start migration in background (do not await)
-        migrateGlobalToPrivate(currentUserUid).catch(e => console.error('Migration failed:', e));
-        
+
+        // Nota: la migración de la colección global 'receipts' a datos por usuario
+        // ya está completada y las reglas de Firestore bloquean la colección global,
+        // por lo que migrateGlobalToPrivate() solo generaba un error de permisos en
+        // cada carga. Se deja la función por referencia pero no se ejecuta.
+
         // Use onSnapshot to get real-time updates from other devices!
         db.collection('users').doc(currentUserUid).collection('receipts').onSnapshot(snapshot => {
             allReceipts = [];
@@ -2805,11 +2807,15 @@ firebase.auth().onAuthStateChanged(async user => {
             pendingRegisterType = null;
         }
         unlockApp();
-        document.getElementById('btn-logout').addEventListener('click', () => {
-            firebase.auth().signOut().then(() => {
-                window.location.reload();
+        const btnLogout = document.getElementById('btn-logout');
+        if (btnLogout && !btnLogout.dataset.bound) {
+            btnLogout.dataset.bound = '1';
+            btnLogout.addEventListener('click', () => {
+                firebase.auth().signOut().then(() => {
+                    window.location.reload();
+                });
             });
-        });
+        }
     } else {
         // Usuario no logueado
         currentUserUid = null;
