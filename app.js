@@ -1232,7 +1232,164 @@ async function deleteReceipt(id) {
 
 // ── SHOPPING LIST ──────────────────────────────────────────
 
+// ── LISTA INTELIGENTE DE REPOSICIÓN ────────────────────────
+// Analiza las compras de los últimos N meses y estima, según la cadencia
+// de compra de cada producto recurrente, qué toca reponer, cuánto y el coste.
+const SMART_REORDER_MONTHS = 6;
+const MS_DAY = 86400000;
+
+function renderSmartReorder() {
+    const panel = document.getElementById('smart-shopping-panel');
+    if (!panel) return;
+
+    // Ventana: últimos N meses desde hoy
+    const today = new Date();
+    const cutoff = new Date(today);
+    cutoff.setMonth(cutoff.getMonth() - SMART_REORDER_MONTHS);
+    const todayStr = today.toISOString().slice(0, 10);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const todayMs = new Date(todayStr).getTime();
+
+    const windowReceipts = receipts.filter(r => r.date && r.date >= cutoffStr && r.date <= todayStr);
+
+    // Agregamos las compras por producto (nombre normalizado)
+    const map = {};
+    windowReceipts.forEach(r => {
+        (r.products || []).forEach(p => {
+            if (!p || !p.name) return;
+            const key = p.name.toLowerCase().replace(/\s+/g, ' ').trim();
+            if (!map[key]) map[key] = { name: p.name, events: [], totalQty: 0, totalSpend: 0, stores: {} };
+            const qty = Number(p.qty) || 1;
+            const price = Number(p.totalPrice) || 0;
+            map[key].events.push({ date: r.date, qty, price });
+            map[key].totalQty += qty;
+            map[key].totalSpend += price;
+            if (r.store) map[key].stores[r.store] = (map[key].stores[r.store] || 0) + 1;
+        });
+    });
+
+    const spanDays = Math.max((todayMs - new Date(cutoffStr).getTime()) / MS_DAY, 1);
+    const items = [];
+    let monthlyTotal = 0;
+
+    Object.values(map).forEach(prod => {
+        // Un evento por día de compra (líneas repetidas el mismo día cuentan como una compra)
+        const byDay = {};
+        prod.events.forEach(e => {
+            if (!byDay[e.date]) byDay[e.date] = { date: e.date, qty: 0, price: 0 };
+            byDay[e.date].qty += e.qty;
+            byDay[e.date].price += e.price;
+        });
+        const days = Object.values(byDay).sort((a, b) => a.date < b.date ? -1 : 1);
+        const purchases = days.length;
+
+        // Gasto mensual estimado sobre la ventana analizada (cuenta todos los productos)
+        const monthly = prod.totalSpend / (spanDays / 30);
+        monthlyTotal += monthly;
+
+        // Solo productos recurrentes (2+ compras en días distintos) entran en reposición
+        if (purchases < 2) return;
+
+        // Cadencia media (días entre compras consecutivas)
+        let sumInt = 0;
+        for (let i = 1; i < days.length; i++) {
+            sumInt += (new Date(days[i].date).getTime() - new Date(days[i - 1].date).getTime()) / MS_DAY;
+        }
+        const cadence = Math.max(sumInt / (days.length - 1), 1);
+
+        const lastDate = days[days.length - 1].date;
+        const daysSince = Math.round((todayMs - new Date(lastDate).getTime()) / MS_DAY);
+        const ratio = daysSince / cadence;
+        const daysUntil = Math.round(cadence - daysSince); // negativo = atrasado
+
+        let status;
+        if (ratio >= 1) status = 'due';
+        else if (ratio >= 0.75) status = 'soon';
+        else status = 'ok';
+
+        const suggestedQty = Math.max(1, Math.round(prod.totalQty / purchases));
+        const avgUnitPrice = prod.totalQty > 0 ? prod.totalSpend / prod.totalQty : prod.totalSpend / purchases;
+        const estCost = suggestedQty * avgUnitPrice;
+        const topStore = Object.entries(prod.stores).sort((a, b) => b[1] - a[1])[0];
+
+        items.push({
+            name: prod.name, purchases, cadence, daysSince, daysUntil, ratio, status,
+            suggestedQty, estCost, monthly, store: topStore ? topStore[0] : ''
+        });
+    });
+
+    if (items.length === 0) {
+        panel.innerHTML = `
+            <div class="smart-reorder-empty">
+                <strong>Aún no puedo predecir reposiciones.</strong>
+                <span>Necesito productos comprados 2 o más veces en los últimos ${SMART_REORDER_MONTHS} meses para detectar un patrón. Sigue subiendo facturas y esta lista se irá afinando sola.</span>
+            </div>`;
+        return;
+    }
+
+    // Más atrasado primero
+    items.sort((a, b) => b.ratio - a.ratio);
+
+    const dueItems = items.filter(i => i.status === 'due');
+    const soonItems = items.filter(i => i.status === 'soon');
+    const dueCost = dueItems.reduce((a, i) => a + i.estCost, 0);
+
+    const statusMeta = {
+        due:  { badge: 'Reponer ya', cls: 'due' },
+        soon: { badge: 'Pronto',     cls: 'soon' },
+        ok:   { badge: 'Al día',     cls: 'ok' }
+    };
+
+    const cards = items.map(i => {
+        const meta = statusMeta[i.status];
+        let timing;
+        if (i.status === 'due') {
+            timing = i.daysUntil < 0 ? `atrasado ${Math.abs(i.daysUntil)} días` : 'toca ahora';
+        } else {
+            timing = `en ~${Math.max(i.daysUntil, 0)} días`;
+        }
+        return `
+            <div class="reorder-card ${meta.cls}">
+                <div class="reorder-main">
+                    <div class="reorder-name">${escapeHtml(i.name)}</div>
+                    <div class="reorder-meta">
+                        <span class="reorder-badge ${meta.cls}">${meta.badge}</span>
+                        <span>cada ~${Math.round(i.cadence)} días · última hace ${i.daysSince} d</span>
+                        ${i.store ? `<span>· ${escapeHtml(i.store)}</span>` : ''}
+                    </div>
+                </div>
+                <div class="reorder-side">
+                    <div class="reorder-qty">${i.suggestedQty} uds.</div>
+                    <div class="reorder-cost">~${currency.format(i.estCost)}</div>
+                    <div class="reorder-timing">${timing}</div>
+                </div>
+            </div>`;
+    }).join('');
+
+    panel.innerHTML = `
+        <div class="smart-reorder-summary">
+            <div class="reorder-tile due">
+                <span class="reorder-tile-label">Toca reponer ahora</span>
+                <span class="reorder-tile-value">${dueItems.length} producto${dueItems.length !== 1 ? 's' : ''}</span>
+                <span class="reorder-tile-sub">~${currency.format(dueCost)} estimado</span>
+            </div>
+            <div class="reorder-tile soon">
+                <span class="reorder-tile-label">Reponer pronto</span>
+                <span class="reorder-tile-value">${soonItems.length} producto${soonItems.length !== 1 ? 's' : ''}</span>
+                <span class="reorder-tile-sub">en los próximos días</span>
+            </div>
+            <div class="reorder-tile neutral">
+                <span class="reorder-tile-label">Gasto mensual estimado</span>
+                <span class="reorder-tile-value">${currency.format(monthlyTotal)}</span>
+                <span class="reorder-tile-sub">${items.length} productos recurrentes</span>
+            </div>
+        </div>
+        <p class="smart-reorder-note">Basado en tus compras de los últimos ${SMART_REORDER_MONTHS} meses. Solo incluye productos comprados 2+ veces; la cantidad y el coste son estimaciones de tu media.</p>
+        <div class="reorder-list">${cards}</div>`;
+}
+
 function renderShoppingList() {
+    renderSmartReorder();
     const { from, to } = readPeriod('shopping');
     const monthReceipts = getRangeReceipts(from, to);
 

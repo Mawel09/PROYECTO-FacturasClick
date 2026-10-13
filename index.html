@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=25">
+    <link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
     <!-- ===== AUTH SCREEN ===== -->
@@ -315,16 +315,24 @@
             <section class="section" id="section-shopping">
                 <div class="section-header">
                     <div class="section-title">
-                        <h2>Lista de Compra Mensual</h2>
-                        <p>Productos que has comprado este mes agregados</p>
+                        <h2>Lista de Compra Inteligente</h2>
+                        <p>Qué reponer según tu ritmo de compra de los últimos meses</p>
                     </div>
                 </div>
 
-                <div class="filter-bar period-bar">
-                    <span class="period-label">Desde</span>
-                    <input type="month" id="shopping-from" class="period-input">
-                    <span class="period-label">Hasta</span>
-                    <input type="month" id="shopping-to" class="period-input">
+                <!-- Smart reorder panel (analiza los últimos 6 meses) -->
+                <div id="smart-shopping-panel">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="shopping-hist-header">
+                    <h3 class="shopping-subheader">Histórico de productos</h3>
+                    <div class="filter-bar period-bar">
+                        <span class="period-label">Desde</span>
+                        <input type="month" id="shopping-from" class="period-input">
+                        <span class="period-label">Hasta</span>
+                        <input type="month" id="shopping-to" class="period-input">
+                    </div>
                 </div>
 
                 <div class="shopping-list-grid" id="shopping-list">
@@ -814,6 +822,6 @@
     </script>
 
     <!-- App Script (v39 to break cache) -->
-    <script src="app.js?v=51"></script>
+    <script src="app.js?v=52"></script>
 </body>
 </html>
